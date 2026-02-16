@@ -1,0 +1,83 @@
+identifier,badge_info,generation_id,name,id
+blue,[object Object],1,Pokémon Blue,1
+green,[object Object],1,Pokémon Green,2
+red,[object Object],1,Pokémon Red,3
+red-blue,"[object Object],[object Object]",1,Pokémon Red & Blue,4
+red-green,"[object Object],[object Object]",1,Pokémon Red & Green,5
+stadium,[object Object],1,Pokémon Stadium,6
+stadium-jp-website,[object Object],1,Pokémon Stadium (Japanese Website),7
+yellow,[object Object],1,Pokémon Yellow,8
+crystal,[object Object],2,Pokémon Crystal,9
+gold,[object Object],2,Pokémon Gold,10
+gold-silver,"[object Object],[object Object]",2,Pokémon Gold & Silver,11
+silver,[object Object],2,Pokémon Silver,12
+stadium-2,[object Object],2,Pokémon Stadium 2,13
+colosseum,[object Object],3,Pokémon Colosseum,14
+emerald,[object Object],3,Pokémon Emerald,15
+firered,[object Object],3,Pokémon FireRed,16
+firered-leafgreen,"[object Object],[object Object]",3,Pokémon FireRed & LeafGreen,17
+leafgreen,[object Object],3,Pokémon LeafGreen,18
+ranger,[object Object],3,Pokémon Ranger,19
+ruby,[object Object],3,Pokémon Ruby,20
+ruby-sapphire,"[object Object],[object Object]",3,Pokémon Ruby & Sapphire,21
+sapphire,[object Object],3,Pokémon Sapphire,22
+xd,[object Object],3,Pokémon XD: Gale of Darkness,23
+battle-revolution,[object Object],4,Pokémon Battle Revolution,24
+battrio,[object Object],4,Pokémon Battrio,25
+diamond,[object Object],4,Pokémon Diamond,26
+diamond-pearl,"[object Object],[object Object]",4,Pokémon Diamond & Pearl,27
+heartgold,[object Object],4,Pokémon HeartGold,28
+heartgold-soulsilver,"[object Object],[object Object]",4,Pokémon HeartGold & SoulSilver,29
+pearl,[object Object],4,Pokémon Pearl,30
+platinum,[object Object],4,Pokémon Platinum,31
+soulsilver,[object Object],4,Pokémon SoulSilver,32
+black,[object Object],5,Pokémon Black,33
+black-2,[object Object],5,Pokémon Black 2,34
+black-2-white-2,"[object Object],[object Object]",5,Pokémon Black 2 & White 2,35
+black-white,"[object Object],[object Object]",5,Pokémon Black & White,36
+dream,[object Object],5,Pokémon Dream,37
+global-link,[object Object],5,Pokémon Global Link,38
+tretta,[object Object],5,Pokémon Tretta,39
+white,[object Object],5,Pokémon White,40
+white-2,[object Object],5,Pokémon White 2,41
+alpha-sapphire,[object Object],6,Pokémon Alpha Sapphire,42
+go,[object Object],6,Pokémon Go,43
+omega-ruby,[object Object],6,Pokémon Omega Ruby,44
+omega-ruby-alpha-sapphire,"[object Object],[object Object]",6,Pokémon OmegaRuby & AlphaSapphire,45
+x,[object Object],6,Pokémon X,46
+x-y,"[object Object],[object Object]",6,Pokémon X & Y,47
+y,[object Object],6,Pokémon Y,48
+lets-go-eevee,[object Object],7,"Pokémon Let's Go, Eevee!",49
+lets-go-pikachu,[object Object],7,"Pokémon Let's Go, Pikachu!",50
+lets-go-pikachu-lets-go-eevee,"[object Object],[object Object]",7,Pokémon Let's Go Pikachu & Let's Go Eevee,51
+masters-ex,[object Object],7,Pokémon Masters Ex,52
+moon,[object Object],7,Pokémon Moon,53
+quest,[object Object],7,Pokémon Quest,54
+rumble-rush,[object Object],7,Pokémon Rumble Rush,55
+sun,[object Object],7,Pokémon Sun,56
+sun-moon,"[object Object],[object Object]",7,Pokémon Sun & Moon,57
+ultra-moon,[object Object],7,Pokémon Ultra Moon,58
+ultra-sun,[object Object],7,Pokémon Ultra Sun,59
+ultra-sun-ultra-moon,"[object Object],[object Object]",7,Pokémon Ultra-Sun & Ultra-Moon,60
+brilliant-diamond,[object Object],8,Pokémon Brilliant Diamond,61
+brilliant-diamond-shining-pearl,"[object Object],[object Object]",8,Pokémon Brilliant Diamond & Shining Pearl,62
+home,[object Object],8,Pokémon Home,63
+home-mobile,[object Object],8,Pokémon Home (Mobile),64
+legends-arceus,[object Object],8,Pokémon Legends: Arceus,65
+mezastar,[object Object],8,Pokémon Mezastar,66
+new-snap,[object Object],8,Pokémon New Snap,67
+rescue-team-dx,[object Object],8,Pokémon Rescue Team DX,68
+shield,[object Object],8,Pokémon Shield,69
+shining-pearl,[object Object],8,Pokémon Shining Pearl,70
+sword,[object Object],8,Pokémon Sword,71
+sword-shield,"[object Object],[object Object]",8,Pokémon Sword & Shield,72
+the-crown-tundra,[object Object],8,Pokémon Sword & Shield : The Crown Tundra,73
+the-isle-of-armor,[object Object],8,Pokémon Sword & Shield : The Isle Of Armor,74
+legends-za,[object Object],9,Pokémon Legends: Z-A,75
+scarlet,[object Object],9,Pokémon Scarlet,76
+scarlet-violet,"[object Object],[object Object]",9,Pokémon Scarlet & Violet,77
+sleep,[object Object],9,Pokémon Sleep,78
+the-indigo-disk,[object Object],9,Pokémon Scarlet & Violet: The Indigo Disk,79
+the-teal-mask,[object Object],9,Pokémon Scarlet & Violet: The Teal Mask,80
+violet,[object Object],9,Pokémon Violet,81
+mystery-dungeon-gates-infinity,[object Object],5,Pokémon Mystery Dungeon: Gates to Infinity,82
