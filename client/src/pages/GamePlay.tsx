@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-import { useStartGame, useSubmitAnswer, useGetHint } from "@/hooks/use-game";
+import { useStartGame, useSubmitAnswer, useGetHint, useSubmitScore } from "@/hooks/use-game";
 import { RetroButton } from "@/components/RetroButton";
 import { RetroCard } from "@/components/RetroCard";
 import { MoveCard } from "@/components/MoveCard";
@@ -142,12 +142,16 @@ export default function GamePlay() {
   };
 
   const requestHint = (type: "generation" | "type") => {
-    if (!state.roundActive) return;
+    if (!state.roundActive || getHint.isPending) return;
     
     getHint.mutate({ roundToken: state.roundToken, type }, {
       onSuccess: (data) => {
         setHintMessage(data.hint);
-        setState(prev => ({ ...prev, hintsUsed: prev.hintsUsed + 1 }));
+        setState(prev => ({ 
+          ...prev, 
+          hintsUsed: prev.hintsUsed + 1,
+          score: Math.max(0, prev.score - 1)
+        }));
       },
       onError: (err: any) => {
         setState(prev => ({ ...prev, feedback: { message: "Hint failed: " + err.message, type: "error" }}));
@@ -307,11 +311,11 @@ export default function GamePlay() {
 
 function GameOverScreen({ score, lastPokemon, onRestart }: { score: number, lastPokemon?: { name: string, imageUrl: string | null }, onRestart: () => void }) {
   const [name, setName] = useState("");
-  const { mutate: submitScore, isPending, isSuccess } = useSubmitScore();
+  const submitScore = useSubmitScore();
 
   const handleSubmit = () => {
     if (!name.trim()) return;
-    submitScore({
+    submitScore.mutate({
       playerName: name,
       score,
       genFilter: 9, 
@@ -344,32 +348,32 @@ function GameOverScreen({ score, lastPokemon, onRestart }: { score: number, last
             <span className="block text-5xl font-retro text-primary">{score}</span>
           </div>
 
-          {!isSuccess ? (
-            <div className="space-y-4">
-              <input 
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="ENTER YOUR NAME"
-                className="w-full p-3 text-center font-retro text-lg uppercase bg-white border-2 border-foreground rounded focus:outline-none focus:border-primary"
-                maxLength={10}
-              />
-              <RetroButton 
-                onClick={handleSubmit} 
-                className="w-full"
-                isLoading={isPending}
-                disabled={!name.trim()}
-              >
-                Submit Score
-              </RetroButton>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="text-green-600 font-bold text-xl">Score Submitted!</div>
-              <RetroButton variant="outline" onClick={() => window.location.href = "/leaderboard"} className="w-full">
-                View Leaderboard
-              </RetroButton>
-            </div>
-          )}
+              {!submitScore.isSuccess ? (
+                <div className="space-y-4">
+                  <input 
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="ENTER YOUR NAME"
+                    className="w-full p-3 text-center font-retro text-lg uppercase bg-white border-2 border-foreground rounded focus:outline-none focus:border-primary"
+                    maxLength={10}
+                  />
+                  <RetroButton 
+                    onClick={handleSubmit} 
+                    className="w-full"
+                    isLoading={submitScore.isPending}
+                    disabled={!name.trim()}
+                  >
+                    Submit Score
+                  </RetroButton>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-green-600 font-bold text-xl">Score Submitted!</div>
+                  <RetroButton variant="outline" onClick={() => window.location.href = "/leaderboard"} className="w-full">
+                    View Leaderboard
+                  </RetroButton>
+                </div>
+              )}
 
           <RetroButton variant="ghost" onClick={onRestart} className="w-full mt-4">
             <RotateCcw className="w-4 h-4 mr-2" />
@@ -381,12 +385,4 @@ function GameOverScreen({ score, lastPokemon, onRestart }: { score: number, last
   );
 }
 
-function useSubmitScore() {
-  const queryClient = import("@/lib/queryClient").then(m => m.queryClient);
-  const { useMutation } = import("@tanstack/react-query").then(m => m);
-  const { api } = import("@shared/routes").then(m => m);
-  
-  // Actually I should use the one from hooks/use-game.ts
-  // but I'll fix the component logic here.
-  return { mutate: (data: any) => {}, isPending: false, isSuccess: false }; 
-}
+  // No need for inline hook, use the one from hooks/use-game.ts
