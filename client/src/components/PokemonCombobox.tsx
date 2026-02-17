@@ -76,9 +76,14 @@ export function PokemonCombobox({ onSelect, maxGen, disabled }: PokemonComboboxP
                   key={pokemon.id}
                   value={pokemon.name}
                   onSelect={() => {
-                    console.log("Selected:", pokemon.name);
                     onSelect(pokemon.id, pokemon.name);
-                    setQuery(pokemon.name.replace(/-default.*/, ""));
+                    setQuery(pokemon.name.replace(/-default.*/, "").replace(/-/g, " "));
+                    setOpen(false);
+                  }}
+                  onPointerDown={(e) => {
+                    // Force selection on click/tap for cmdk in some environments
+                    onSelect(pokemon.id, pokemon.name);
+                    setQuery(pokemon.name.replace(/-default.*/, "").replace(/-/g, " "));
                     setOpen(false);
                   }}
                 >

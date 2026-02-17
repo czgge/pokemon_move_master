@@ -22,7 +22,24 @@ export function MoveCard({ name, type, power, accuracy, pp, index }: MoveCardPro
       className={cn(
         "relative overflow-hidden rounded-lg p-4 pixel-border-sm hover:scale-[1.02] transition-transform",
         "flex flex-col justify-between min-h-[140px]",
-        `type-${type.toLowerCase()}`
+        type.toLowerCase() === "normal" ? "bg-[#A8A77A]" :
+        type.toLowerCase() === "fire" ? "bg-[#EE8130]" :
+        type.toLowerCase() === "water" ? "bg-[#6390F0]" :
+        type.toLowerCase() === "electric" ? "bg-[#F7D02C]" :
+        type.toLowerCase() === "grass" ? "bg-[#7AC74C]" :
+        type.toLowerCase() === "ice" ? "bg-[#96D9D6]" :
+        type.toLowerCase() === "fighting" ? "bg-[#C22E28]" :
+        type.toLowerCase() === "poison" ? "bg-[#A33EA1]" :
+        type.toLowerCase() === "ground" ? "bg-[#E2BF65]" :
+        type.toLowerCase() === "flying" ? "bg-[#A98FF3]" :
+        type.toLowerCase() === "psychic" ? "bg-[#F95587]" :
+        type.toLowerCase() === "bug" ? "bg-[#A6B91A]" :
+        type.toLowerCase() === "rock" ? "bg-[#B6A136]" :
+        type.toLowerCase() === "ghost" ? "bg-[#735797]" :
+        type.toLowerCase() === "dragon" ? "bg-[#6F35FC]" :
+        type.toLowerCase() === "dark" ? "bg-[#705746]" :
+        type.toLowerCase() === "steel" ? "bg-[#B7B7CE]" :
+        type.toLowerCase() === "fairy" ? "bg-[#D685AD]" : "bg-white"
       )}
     >
       <div className={cn(

@@ -35,8 +35,8 @@ export async function registerRoutes(
       let roundData = null;
       let response = null;
 
-      // Try to find a valid unique moveset up to 10 times
-      while (attempts < 10) {
+      // Try to find a valid unique moveset up to 30 times
+      while (attempts < 30) {
         attempts++;
         
         // 1. Get a random Pokemon
@@ -48,36 +48,40 @@ export async function registerRoutes(
         if (validMoves.length < 4) continue;
         
         // 3. Select 4 random unique moves
-        const shuffledMoves = validMoves.sort(() => 0.5 - Math.random());
-        const selectedMoves = shuffledMoves.slice(0, 4);
-        const moveIds = selectedMoves.map(m => m.id);
+        // Try different move combinations for the same pokemon
+        for (let moveSetAttempt = 0; moveSetAttempt < 5; moveSetAttempt++) {
+          const shuffledMoves = validMoves.sort(() => 0.5 - Math.random());
+          const selectedMoves = shuffledMoves.slice(0, 4);
+          const moveIds = selectedMoves.map(m => m.id);
 
-        // 4. Check Uniqueness
-        const isUnique = await storage.checkUniqueMoveset(moveIds, targetPokemon.id, maxGen);
-        
-        if (isUnique) {
-          const roundId = Math.random().toString(36).substring(7);
-          roundData = {
-            roundId,
-            correctPokemonId: targetPokemon.id,
-            moves: selectedMoves.map(m => m.name),
-            gen: maxGen
-          };
+          // 4. Check Uniqueness
+          const isUnique = await storage.checkUniqueMoveset(moveIds, targetPokemon.id, maxGen);
+          
+          if (isUnique) {
+            const roundId = Math.random().toString(36).substring(7);
+            roundData = {
+              roundId,
+              correctPokemonId: targetPokemon.id,
+              moves: selectedMoves.map(m => m.name),
+              gen: maxGen
+            };
 
-          response = {
-            roundId,
-            moves: selectedMoves.map(m => ({
-              name: m.name,
-              type: m.type,
-              power: m.power,
-              pp: m.pp,
-              accuracy: m.accuracy
-            })),
-            generation: maxGen,
-            roundToken: createRoundToken(roundData)
-          };
-          break;
+            response = {
+              roundId,
+              moves: selectedMoves.map(m => ({
+                name: m.name,
+                type: m.type,
+                power: m.power,
+                pp: m.pp,
+                accuracy: m.accuracy
+              })),
+              generation: maxGen,
+              roundToken: createRoundToken(roundData)
+            };
+            break;
+          }
         }
+        if (response) break;
       }
 
       if (response) {
