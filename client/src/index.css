@@ -6,97 +6,81 @@
 
 :root {
   /* Gameboy / Retro Palette */
-  --background: 80 15% 90%;      /* Off-white/Gameboy Screen bg */
-  --foreground: 222 47% 11%;
+  --retro-bg: 45 20% 90%;       /* #e8e6dc - Gameboy screen background */
+  --retro-dark: 220 15% 15%;    /* #20232a - Dark pixel color */
+  --retro-accent: 340 70% 50%;  /* #d92662 - A nice retro red */
+  --retro-blue: 210 70% 50%;    /* #2662d9 - A nice retro blue */
   
-  --primary: 346 84% 45%;        /* Pokemon Red */
-  --primary-foreground: 0 0% 100%;
-  
-  --secondary: 217 91% 60%;      /* Pokemon Blue */
-  --secondary-foreground: 0 0% 100%;
-  
-  --muted: 80 10% 85%;
-  --muted-foreground: 215 16% 40%;
-  
-  --accent: 45 93% 47%;          /* Pokemon Yellow/Gold */
-  --accent-foreground: 222 47% 11%;
-  
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 214 32% 80%;
-  --input: 214 32% 91%;
-  --ring: 346 84% 61%;
-  
-  --radius: 0.25rem;
-  
-  --font-retro: 'Press Start 2P', cursive;
-  --font-pixel: 'VT323', monospace;
-}
+  --font-retro-head: 'Press Start 2P', cursive;
+  --font-retro-body: 'VT323', monospace;
 
-.dark {
-  /* Gameboy Advance SP / Dark Mode */
-  --background: 224 71% 4%;
-  --foreground: 213 31% 91%;
-  
-  --primary: 346 84% 45%;
+  --background: 220 20% 97%;
+  --foreground: 220 15% 15%;
+  --primary: 340 75% 45%;
   --primary-foreground: 0 0% 100%;
-  
-  --secondary: 217 91% 60%;
-  --secondary-foreground: 0 0% 100%;
-  
-  --muted: 223 47% 11%;
-  --muted-foreground: 215.4 16.3% 56.9%;
-  
-  --accent: 45 93% 47%;
-  --accent-foreground: 222 47% 11%;
-  
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 216 34% 17%;
-  --input: 216 34% 17%;
-  --ring: 216 34% 17%;
+  --secondary: 215 25% 90%;
+  --secondary-foreground: 220 15% 15%;
+  --muted: 215 25% 90%;
+  --muted-foreground: 220 10% 45%;
+  --accent: 45 20% 85%;
+  --accent-foreground: 220 15% 15%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 15% 85%;
+  --input: 220 15% 85%;
+  --ring: 340 75% 45%;
+  --radius: 0.25rem;
 }
 
 @layer base {
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: var(--font-pixel);
-    font-size: 1.25rem; /* Larger base size for pixel fonts */
+    font-family: var(--font-retro-body);
+    font-size: 1.25rem; /* Larger base size for pixel font */
+    background-image: 
+      radial-gradient(#d1d5db 1px, transparent 1px),
+      radial-gradient(#d1d5db 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-retro);
-    @apply font-normal tracking-tight; /* Retro fonts often don't need bold */
+    font-family: var(--font-retro-head);
+    @apply tracking-tighter text-foreground;
   }
 }
 
 @layer components {
-  .retro-container {
-    @apply border-4 border-foreground/80 rounded-lg p-1 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)];
+  /* Pokemon Type Colors */
+  .type-normal { @apply bg-[#A8A77A] text-white border-[#8a8964]; }
+  .type-fire { @apply bg-[#EE8130] text-white border-[#d06b22]; }
+  .type-water { @apply bg-[#6390F0] text-white border-[#4d78d3]; }
+  .type-electric { @apply bg-[#F7D02C] text-black border-[#dcb61c]; }
+  .type-grass { @apply bg-[#7AC74C] text-white border-[#62a639]; }
+  .type-ice { @apply bg-[#96D9D6] text-black border-[#7bc0bd]; }
+  .type-fighting { @apply bg-[#C22E28] text-white border-[#a0241f]; }
+  .type-poison { @apply bg-[#A33EA1] text-white border-[#863085]; }
+  .type-ground { @apply bg-[#E2BF65] text-black border-[#c7a652]; }
+  .type-flying { @apply bg-[#A98FF3] text-white border-[#8e72dd]; }
+  .type-psychic { @apply bg-[#F95587] text-white border-[#d93c6e]; }
+  .type-bug { @apply bg-[#A6B91A] text-white border-[#8a9a14]; }
+  .type-rock { @apply bg-[#B6A136] text-white border-[#98862a]; }
+  .type-ghost { @apply bg-[#735797] text-white border-[#5d447d]; }
+  .type-dragon { @apply bg-[#6F35FC] text-white border-[#5727cf]; }
+  .type-dark { @apply bg-[#705746] text-white border-[#584436]; }
+  .type-steel { @apply bg-[#B7B7CE] text-black border-[#9a9ab3]; }
+  .type-fairy { @apply bg-[#D685AD] text-white border-[#bd6d94]; }
+
+  /* Retro Utilities */
+  .pixel-border {
+    @apply border-4 border-foreground shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)];
+  }
+  
+  .pixel-border-sm {
+    @apply border-2 border-foreground shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)];
   }
 
-  .retro-btn {
-    @apply relative px-6 py-3 font-bold uppercase transition-all duration-100
-           border-b-4 border-r-4 border-black/20 active:border-b-0 active:border-r-0 active:translate-y-1 active:translate-x-1;
-    font-family: var(--font-retro);
-    font-size: 0.75rem;
-  }
-  
-  .pixel-text {
-    font-family: var(--font-pixel);
-  }
-  
-  .scanline {
-    background: linear-gradient(
-      to bottom,
-      rgba(255,255,255,0),
-      rgba(255,255,255,0) 50%,
-      rgba(0,0,0,0.05) 50%,
-      rgba(0,0,0,0.05)
-    );
-    background-size: 100% 4px;
-    pointer-events: none;
+  .pixel-text-shadow {
+    text-shadow: 2px 2px 0px rgba(0,0,0,0.2);
   }
 }

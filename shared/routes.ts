@@ -26,16 +26,14 @@ export const api = {
       responses: {
         200: z.object({
           roundId: z.string(),
-          moves: z.array(z.string()),
-          generation: z.number(),
-          options: z.array(z.object({
-            id: z.number(),
+          moves: z.array(z.object({
             name: z.string(),
-            imageUrl: z.string().nullable().optional(),
+            type: z.string(),
+            power: z.number().nullable(),
+            pp: z.number().nullable(),
+            accuracy: z.number().nullable(),
           })),
-          // We encrypt or hide the correct answer ID in a real robust app, 
-          // but for this simple version we can return a token or rely on server-side session.
-          // For statelessness, we'll return a "roundToken" which encodes the answer.
+          generation: z.number(),
           roundToken: z.string(), 
         }),
       },
@@ -88,6 +86,17 @@ export const api = {
         }),
       },
     },
+    search: { // Autocomplete endpoint
+      method: 'GET' as const,
+      path: '/api/pokemon/search' as const,
+      input: z.object({
+        query: z.string(),
+        maxGen: z.string(),
+      }),
+      responses: {
+        200: z.array(z.custom<typeof pokemon.$inferSelect>()),
+      },
+    }
   },
   leaderboard: {
     list: {

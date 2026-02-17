@@ -1,287 +1,386 @@
 import { useState, useEffect } from "react";
-import { Layout } from "@/components/Layout";
-import { RetroButton } from "@/components/RetroButton";
-import { RetroCard } from "@/components/RetroCard";
-import { useSubmitGuess, useGetHint } from "@/hooks/use-game";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, Zap, Map, HelpCircle, Check, X, ArrowRight } from "lucide-react";
 import confetti from "canvas-confetti";
-import { PokemonSprite } from "@/components/PokemonSprite";
-import { cn } from "@/lib/utils";
+import { useStartGame, useSubmitAnswer, useGetHint } from "@/hooks/use-game";
+import { RetroButton } from "@/components/RetroButton";
+import { RetroCard } from "@/components/RetroCard";
+import { MoveCard } from "@/components/MoveCard";
+import { GameHeader } from "@/components/GameHeader";
+import { PokemonCombobox } from "@/components/PokemonCombobox";
+import { Loader2, Lightbulb, Zap, ArrowRight, RotateCcw } from "lucide-react";
+import { Layout } from "@/components/Layout";
 
-// Types derived from API response
-interface GameRoundData {
+type GameState = {
+  maxGen: number;
+  score: number;
+  lives: number;
   roundToken: string;
-  moves: string[];
+  moves: Array<{ name: string; type: string; power: number | null; accuracy: number | null; pp: number | null }>;
   generation: number;
-  options: { id: number; name: string; imageUrl?: string | null }[];
-}
+  feedback: { message: string; type: "success" | "error" | "info" } | null;
+  roundActive: boolean;
+  hintsUsed: number;
+  attempt: number;
+  correctPokemon?: { name: string; imageUrl: string | null };
+};
 
 export default function GamePlay() {
-  const [_, setLocation] = useLocation();
-  const [gameData, setGameData] = useState<GameRoundData | null>(null);
-  const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(3);
-  const [attempts, setAttempts] = useState(1);
-  const [hintsUsed, setHintsUsed] = useState(0);
-  
-  // Feedback state
-  const [feedback, setFeedback] = useState<"correct" | "wrong" | null>(null);
-  const [revealedPokemon, setRevealedPokemon] = useState<any>(null);
-  const [hintText, setHintText] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  // Hooks
-  const submitGuess = useSubmitGuess();
+  const [location, setLocation] = useLocation();
+  const startGame = useStartGame();
+  const submitAnswer = useSubmitAnswer();
   const getHint = useGetHint();
 
-  useEffect(() => {
-    // Load initial game data
-    const savedData = sessionStorage.getItem("currentGame");
-    if (!savedData) {
-      setLocation("/game/setup");
-      return;
-    }
-    setGameData(JSON.parse(savedData));
-  }, [setLocation]);
-
-  const handleGuess = async (pokemonId: number) => {
-    if (!gameData || isProcessing || feedback === "correct") return;
-    
-    setIsProcessing(true);
-    
+  // Load config from local storage or previous page state (simplified: use defaults or redirect if missing)
+  const [config] = useState(() => {
     try {
-      const result = await submitGuess.mutateAsync({
-        roundToken: gameData.roundToken,
-        guessedPokemonId: pokemonId,
-        attempt: attempts,
-        hintsUsed,
-      });
+      return JSON.parse(sessionStorage.getItem("gameConfig") || '{"maxGen": 1}');
+    } catch {
+      return { maxGen: 1 };
+    }
+  });
 
-      if (result.correct) {
-        setFeedback("correct");
-        setScore((prev) => prev + result.points);
-        setRevealedPokemon(result.correctPokemon);
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      } else {
-        setFeedback("wrong");
-        setLives(result.livesRemaining);
-        
-        if (result.livesRemaining <= 0) {
-          // Game Over logic would go here
-          setRevealedPokemon(result.correctPokemon); // Reveal the answer
-        } else if (attempts >= 3) {
-          // Round failed but game continues (if we implemented per-round lives, but API suggests global lives)
-          // For this logic, let's assume if attempts reaches 3, they lose the round
-           setRevealedPokemon(result.correctPokemon);
+  const [state, setState] = useState<GameState>({
+    maxGen: config.maxGen,
+    score: 0,
+    lives: 3,
+    roundToken: "",
+    moves: [],
+    generation: 1,
+    feedback: null,
+    roundActive: false,
+    hintsUsed: 0,
+    attempt: 1,
+  });
+
+  const [hintMessage, setHintMessage] = useState<string | null>(null);
+
+  // Initialize game on mount
+  useEffect(() => {
+    startNewRound();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startNewRound = () => {
+    setState(prev => ({ 
+      ...prev, 
+      feedback: null, 
+      roundActive: false,
+      hintsUsed: 0,
+      attempt: 1,
+      correctPokemon: undefined
+    }));
+    setHintMessage(null);
+
+    startGame.mutate({ maxGen: state.maxGen }, {
+      onSuccess: (data) => {
+        setState(prev => ({
+          ...prev,
+          roundToken: data.roundToken,
+          moves: data.moves,
+          generation: data.generation,
+          roundActive: true,
+        }));
+      },
+      onError: () => {
+        setState(prev => ({ ...prev, feedback: { message: "Failed to load round. Retrying...", type: "error" } }));
+      }
+    });
+  };
+
+  const handleGuess = (pokemonId: number, pokemonName: string) => {
+    if (!state.roundActive) return;
+
+    submitAnswer.mutate({
+      roundToken: state.roundToken,
+      guessedPokemonId: pokemonId,
+      attempt: state.attempt,
+      hintsUsed: state.hintsUsed,
+    }, {
+      onSuccess: (data) => {
+        if (data.correct) {
+          confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+          setState(prev => ({
+            ...prev,
+            score: prev.score + data.points,
+            roundActive: false, // Stop interactions
+            feedback: { message: `Correct! It's ${pokemonName}! (+${data.points})`, type: "success" },
+            correctPokemon: data.correctPokemon ? { 
+              name: data.correctPokemon.name, 
+              imageUrl: data.correctPokemon.imageUrl 
+            } : undefined
+          }));
         } else {
-           setAttempts(prev => prev + 1);
+          // Wrong guess
+          const newLives = data.livesRemaining;
+          const nextAttempt = state.attempt + 1;
+          
+          if (newLives < state.lives && newLives > 0) {
+            // Player lost a life because they used all 3 attempts? 
+            // The backend logic says attempt 3 failure = reveal answer. 
+            // Wait, the user said "3 lives, then game over". "You can guess 3 times before losing a life."
+            // Backend handles this calculation.
+            
+            // If lives dropped, it means they exhausted attempts for this round OR it's a hard mode where every guess counts?
+            // "You can guess 3 times before losing a life." implies 3 strikes per round.
+            
+            // Let's rely on data.livesRemaining from backend.
+            setState(prev => ({
+              ...prev,
+              lives: newLives,
+              attempt: nextAttempt,
+              feedback: { message: `Wrong! Try again (${4 - nextAttempt} attempts left this round)`, type: "error" }
+            }));
+          } else if (newLives === state.lives) {
+             // Just a wrong attempt, haven't lost a life yet (attempt < 3)
+             setState(prev => ({
+              ...prev,
+              attempt: nextAttempt,
+              feedback: { message: `Wrong! Try again.`, type: "error" }
+             }));
+          } else {
+             // Game Over (0 lives)
+             setState(prev => ({
+               ...prev,
+               lives: 0,
+               roundActive: false,
+               feedback: { message: "GAME OVER!", type: "error" },
+               correctPokemon: data.correctPokemon ? {
+                 name: data.correctPokemon.name,
+                 imageUrl: data.correctPokemon.imageUrl
+               } : undefined
+             }));
+          }
         }
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsProcessing(false);
+    });
+  };
+
+  const requestHint = (type: "generation" | "type") => {
+    if (state.score < 1) {
+      setState(prev => ({ ...prev, feedback: { message: "Not enough points for hint!", type: "error" }}));
+      return;
     }
+
+    getHint.mutate({ roundToken: state.roundToken, type }, {
+      onSuccess: (data) => {
+        setHintMessage(data.hint);
+        setState(prev => ({ ...prev, hintsUsed: prev.hintsUsed + 1 }));
+      }
+    });
   };
 
-  const handleHint = async (type: 'generation' | 'type') => {
-    if (!gameData || hintText) return;
-    try {
-      const res = await getHint.mutateAsync({ 
-        roundToken: gameData.roundToken, 
-        type 
-      });
-      setHintText(res.hint);
-      setHintsUsed(prev => prev + 1);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const nextRound = () => {
-    // In a real app, we'd fetch the next round from the server here
-    // For this MVP, we'll redirect to setup to "restart" or simulate fetching new round
-    // A proper implementation would have a /api/game/next endpoint
-    setLocation("/game/setup"); 
-  };
-
-  if (!gameData) return null;
-
-  const isGameOver = lives <= 0;
-  const showReveal = feedback === "correct" || isGameOver || (feedback === "wrong" && attempts >= 3);
+  if (state.lives === 0) {
+    return (
+      <GameOverScreen 
+        score={state.score} 
+        lastPokemon={state.correctPokemon} 
+        onRestart={() => setLocation("/game/setup")} 
+      />
+    );
+  }
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Left Column: Game Status & Moves */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {/* Status Bar */}
-          <div className="flex items-center justify-between bg-white p-4 rounded-lg border-b-4 border-foreground/10">
-            <div className="flex items-center gap-2">
-              <span className="font-retro text-xs text-muted-foreground uppercase">LIVES</span>
-              <div className="flex gap-1">
-                {[1, 2, 3].map((i) => (
-                  <Heart 
-                    key={i} 
-                    className={cn("w-6 h-6 fill-current transition-colors", i <= lives ? "text-red-500" : "text-gray-200")} 
-                  />
-                ))}
-              </div>
-            </div>
-            
-            <div className="text-center">
-              <span className="font-retro text-2xl font-bold">{score}</span>
-              <span className="block font-pixel text-sm text-muted-foreground">POINTS</span>
-            </div>
-            
-            <div className="text-right">
-              <span className="font-retro text-xs text-muted-foreground uppercase block">ATTEMPT</span>
-              <span className="font-retro text-lg text-primary">{attempts}/3</span>
-            </div>
-          </div>
+      <div className="max-w-4xl mx-auto pb-20">
+        <GameHeader lives={state.lives} score={state.score} />
 
-          {/* Moves Display - Styled like Gameboy Screen */}
-          <RetroCard variant="screen" className="py-8 min-h-[300px] flex flex-col items-center justify-center gap-6">
-            <h2 className="font-retro text-sm text-[#0f380f] opacity-70 uppercase tracking-widest mb-2">Known Moveset</h2>
-            <div className="grid grid-cols-2 gap-4 w-full max-w-lg px-4">
-              {gameData.moves.map((move, idx) => (
-                <motion.div 
-                  key={idx}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: idx * 0.1 }}
-                  className="bg-[#8bac0f] border-2 border-[#306230] p-4 text-center rounded shadow-sm"
-                >
-                  <span className="font-retro text-xs md:text-sm text-[#0f380f] font-bold uppercase">{move}</span>
-                </motion.div>
-              ))}
-            </div>
+        <div className="mt-6 mb-8 text-center space-y-2">
+          <h2 className="text-2xl md:text-3xl font-retro text-foreground pixel-text-shadow">
+            WHO'S THAT POKÉMON?
+          </h2>
+          <p className="text-muted-foreground font-mono">
+            Identify the Pokémon from its moveset (Gen {state.maxGen} Rules)
+          </p>
+        </div>
 
-            {/* Hint Display */}
-            <AnimatePresence>
-              {hintText && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mt-4 bg-[#306230] text-[#9bbc0f] px-4 py-2 rounded font-pixel text-xl border-2 border-[#0f380f]"
-                >
-                  HINT: {hintText}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </RetroCard>
-
-          {/* Options Grid */}
-          {!showReveal ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {gameData.options.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => handleGuess(option.id)}
-                  disabled={isProcessing}
-                  className="group relative bg-white border-4 border-foreground/10 hover:border-primary rounded-lg p-4 flex flex-col items-center gap-2 transition-all hover:-translate-y-1 active:translate-y-0"
-                >
-                  <div className="w-20 h-20 flex items-center justify-center">
-                    {/* In a real game we might hide the image or show a silhouette depending on difficulty */}
-                    <PokemonSprite src={option.imageUrl} alt={option.name} size="md" />
-                  </div>
-                  <span className="font-retro text-[10px] uppercase text-center w-full truncate px-1 group-hover:text-primary">
-                    {option.name}
-                  </span>
-                </button>
-              ))}
-            </div>
+        {/* Moves Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+          {startGame.isPending ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-36 bg-muted animate-pulse rounded-lg pixel-border-sm" />
+            ))
           ) : (
-            /* Reveal Card */
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white border-4 border-primary rounded-lg p-8 text-center space-y-4"
-            >
-              <h2 className="font-retro text-2xl uppercase">
-                {feedback === 'correct' ? "It's Correct!" : "Round Over!"}
-              </h2>
-              
-              {revealedPokemon && (
-                <div className="flex flex-col items-center">
-                  <PokemonSprite src={revealedPokemon.imageUrl} alt={revealedPokemon.name} size="xl" />
-                  <span className="font-retro text-xl mt-4 text-primary">{revealedPokemon.speciesName}</span>
-                </div>
-              )}
-
-              <div className="flex justify-center pt-4">
-                <RetroButton onClick={nextRound} className="w-full max-w-xs">
-                  {isGameOver ? "View Results" : "Next Round"} <ArrowRight className="ml-2 w-4 h-4" />
-                </RetroButton>
-              </div>
-            </motion.div>
+            state.moves.map((move, i) => (
+              <MoveCard key={i} index={i} {...move} />
+            ))
           )}
         </div>
 
-        {/* Right Column: Actions */}
-        <div className="lg:col-span-4 space-y-6">
-          <RetroCard>
-            <h3 className="font-retro text-sm uppercase mb-4 flex items-center gap-2">
-              <HelpCircle className="w-4 h-4" /> Hints
-            </h3>
-            <div className="space-y-3">
-              <RetroButton 
-                variant="outline" 
-                className="w-full justify-between text-xs" 
-                onClick={() => handleHint('generation')}
-                disabled={!!hintText || showReveal}
-              >
-                <span>Reveal Gen</span>
-                <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[10px] font-bold">-1 PT</span>
-              </RetroButton>
-              <RetroButton 
-                variant="outline" 
-                className="w-full justify-between text-xs"
-                onClick={() => handleHint('type')}
-                disabled={!!hintText || showReveal}
-              >
-                <span>Reveal Type</span>
-                <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[10px] font-bold">-1 PT</span>
-              </RetroButton>
-            </div>
-            <p className="font-pixel text-muted-foreground text-center mt-4 text-lg leading-tight">
-              Using hints reduces your points earned for this round.
-            </p>
-          </RetroCard>
+        {/* Interaction Area */}
+        <AnimatePresence mode="wait">
+          {!state.roundActive && state.correctPokemon ? (
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="flex flex-col items-center justify-center p-8 bg-white pixel-border rounded-lg text-center gap-6"
+            >
+              <div className="relative">
+                <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
+                {state.correctPokemon.imageUrl && (
+                  <img 
+                    src={state.correctPokemon.imageUrl} 
+                    alt="Correct Pokemon" 
+                    className="w-48 h-48 object-contain relative z-10 pixelated drop-shadow-xl"
+                  />
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-2xl font-bold font-retro text-primary uppercase">
+                  It's {state.correctPokemon.name.replace(/-.*/, "")}!
+                </h3>
+                <p className={`text-xl font-bold ${state.feedback?.type === 'success' ? 'text-green-600' : 'text-red-500'}`}>
+                  {state.feedback?.message}
+                </p>
+              </div>
 
-          <RetroCard className="bg-blue-50/50">
-            <h3 className="font-retro text-sm uppercase mb-4 text-blue-900">Battle Log</h3>
-            <div className="space-y-2 font-pixel text-lg h-40 overflow-y-auto pr-2">
-              {feedback === 'wrong' && (
-                <div className="flex items-center gap-2 text-red-600">
-                  <X className="w-4 h-4" /> Wrong guess! Try again.
+              <RetroButton 
+                size="lg" 
+                onClick={startNewRound}
+                className="w-full max-w-xs animate-bounce"
+              >
+                Next Round <ArrowRight className="ml-2 w-5 h-5" />
+              </RetroButton>
+            </motion.div>
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-6"
+            >
+              {/* Feedback Message */}
+              {state.feedback && (
+                <div className={`p-4 rounded pixel-border-sm text-center font-bold ${
+                  state.feedback.type === 'error' ? 'bg-red-100 text-red-700 border-red-300' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {state.feedback.message}
                 </div>
               )}
-              {feedback === 'correct' && (
-                <div className="flex items-center gap-2 text-green-600">
-                  <Check className="w-4 h-4" /> Correct! +{5 - (attempts-1) - hintsUsed} pts
+
+              {/* Input */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-bold uppercase tracking-wider ml-1">Your Guess:</label>
+                <PokemonCombobox 
+                  onSelect={handleGuess} 
+                  maxGen={state.maxGen}
+                  disabled={!state.roundActive || submitAnswer.isPending} 
+                />
+              </div>
+
+              {/* Hints */}
+              <div className="grid grid-cols-2 gap-4">
+                <RetroButton 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => requestHint("generation")}
+                  disabled={!state.roundActive || state.score < 1}
+                  className="text-xs md:text-sm"
+                >
+                  <Lightbulb className="w-4 h-4 mr-2" />
+                  Gen Hint (-1 Pt)
+                </RetroButton>
+                <RetroButton 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => requestHint("type")}
+                  disabled={!state.roundActive || state.score < 1}
+                  className="text-xs md:text-sm"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Type Hint (-1 Pt)
+                </RetroButton>
+              </div>
+
+              {/* Hint Display */}
+              {hintMessage && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded text-center text-sm font-mono">
+                  💡 HINT: {hintMessage}
                 </div>
               )}
-              {attempts > 1 && feedback !== 'correct' && (
-                <div className="text-muted-foreground">
-                  User attempted guess #{attempts-1}...
-                </div>
-              )}
-              <div className="text-muted-foreground">
-                Wild Pokemon appeared!
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </Layout>
+  );
+}
+
+function GameOverScreen({ score, lastPokemon, onRestart }: { score: number, lastPokemon?: { name: string, imageUrl: string | null }, onRestart: () => void }) {
+  const [name, setName] = useState("");
+  const submitScore = useSubmitScore();
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    submitScore.mutate({
+      playerName: name,
+      score,
+      genFilter: 9, // Should pass actual maxGen from props if available
+    }, {
+      onSuccess: () => {
+        // Redirect to leaderboard is handled by parent or user manual nav
+        window.location.href = "/leaderboard";
+      }
+    });
+  };
+
+  return (
+    <Layout>
+      <div className="min-h-[80vh] flex flex-col items-center justify-center text-center p-4">
+        <RetroCard className="w-full max-w-md p-8 space-y-8 bg-white/95">
+          <div className="space-y-4">
+            <h1 className="text-4xl md:text-5xl font-retro text-destructive mb-2">GAME OVER</h1>
+            <p className="text-xl text-muted-foreground">You ran out of lives!</p>
+          </div>
+
+          {lastPokemon && (
+            <div className="py-4 border-y-2 border-dashed border-gray-200">
+              <p className="text-sm text-muted-foreground mb-2">The last Pokémon was:</p>
+              <div className="flex flex-col items-center">
+                 {lastPokemon.imageUrl && (
+                   <img src={lastPokemon.imageUrl} className="w-24 h-24 object-contain pixelated" alt="Last Pokemon" />
+                 )}
+                 <p className="font-bold text-xl uppercase mt-2">{lastPokemon.name.replace(/-.*/, "")}</p>
               </div>
             </div>
-          </RetroCard>
-        </div>
+          )}
 
+          <div className="bg-muted p-6 rounded pixel-border-sm">
+            <span className="block text-sm uppercase tracking-widest text-muted-foreground mb-1">Final Score</span>
+            <span className="block text-5xl font-retro text-primary">{score}</span>
+          </div>
+
+          {!submitScore.isSuccess ? (
+            <div className="space-y-4">
+              <input 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="ENTER YOUR NAME"
+                className="w-full p-3 text-center font-retro text-lg uppercase bg-white border-2 border-foreground rounded focus:outline-none focus:border-primary"
+                maxLength={10}
+              />
+              <RetroButton 
+                onClick={handleSubmit} 
+                className="w-full"
+                isLoading={submitScore.isPending}
+                disabled={!name.trim()}
+              >
+                Submit Score
+              </RetroButton>
+            </div>
+          ) : (
+            <div className="text-green-600 font-bold">Score Submitted!</div>
+          )}
+
+          <RetroButton variant="ghost" onClick={onRestart} className="w-full mt-4">
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Play Again
+          </RetroButton>
+        </RetroCard>
       </div>
     </Layout>
   );

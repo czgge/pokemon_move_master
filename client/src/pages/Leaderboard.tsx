@@ -1,93 +1,71 @@
-import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { RetroCard } from "@/components/RetroCard";
-import { RetroButton } from "@/components/RetroButton";
-import { useLeaderboard, useSubmitScore } from "@/hooks/use-game";
-import { Trophy, Medal, User } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { useLeaderboard } from "@/hooks/use-game";
+import { Trophy, Calendar } from "lucide-react";
 import { format } from "date-fns";
+import { RetroButton } from "@/components/RetroButton";
+import { useLocation } from "wouter";
 
 export default function Leaderboard() {
   const { data: scores, isLoading } = useLeaderboard();
-  const [playerName, setPlayerName] = useState("");
-  const submitScore = useSubmitScore();
-
-  // Mock score for demo submission (normally passed from Game Over)
-  const tempScore = 0; 
-
-  const handleSubmit = () => {
-    if (!playerName) return;
-    submitScore.mutate({ playerName, score: Math.floor(Math.random() * 100) }); // Demo random score
-    setPlayerName("");
-  };
+  const [_, setLocation] = useLocation();
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto space-y-8">
-        <div className="text-center space-y-2">
-          <h1 className="font-retro text-2xl md:text-3xl flex items-center justify-center gap-3">
-            <Trophy className="text-yellow-500 w-8 h-8" />
-            Hall of Fame
+      <div className="max-w-4xl mx-auto py-8 px-4">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl md:text-4xl font-retro text-foreground flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-yellow-500" />
+            HALL OF FAME
           </h1>
-          <p className="font-pixel text-xl text-muted-foreground">
-            The very best, like no one ever was.
-          </p>
+          <RetroButton onClick={() => setLocation("/")} variant="outline" size="sm">
+            Back Home
+          </RetroButton>
         </div>
 
-        {/* Temporary Input for Testing */}
-        <RetroCard className="mb-8">
-           <div className="flex gap-2">
-             <Input 
-               placeholder="Enter Trainer Name (Test Submission)" 
-               value={playerName}
-               onChange={(e) => setPlayerName(e.target.value)}
-               className="font-pixel text-xl"
-             />
-             <RetroButton onClick={handleSubmit} disabled={!playerName || submitScore.isPending}>
-               Join
-             </RetroButton>
-           </div>
-        </RetroCard>
-
-        <RetroCard className="p-0 overflow-hidden">
+        <RetroCard className="overflow-hidden p-0">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-muted border-b-4 border-foreground/10">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-muted text-muted-foreground text-xs uppercase tracking-wider font-retro">
                 <tr>
-                  <th className="font-retro text-xs p-4 text-left w-20">Rank</th>
-                  <th className="font-retro text-xs p-4 text-left">Trainer</th>
-                  <th className="font-retro text-xs p-4 text-right">Score</th>
-                  <th className="font-retro text-xs p-4 text-right hidden sm:table-cell">Date</th>
+                  <th className="p-4 border-b border-border">Rank</th>
+                  <th className="p-4 border-b border-border">Trainer</th>
+                  <th className="p-4 border-b border-border">Score</th>
+                  <th className="p-4 border-b border-border hidden md:table-cell">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center font-pixel text-xl">Loading records...</td>
-                  </tr>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td className="p-4"><div className="h-4 w-8 bg-muted rounded" /></td>
+                      <td className="p-4"><div className="h-4 w-32 bg-muted rounded" /></td>
+                      <td className="p-4"><div className="h-4 w-16 bg-muted rounded" /></td>
+                      <td className="p-4 hidden md:table-cell"><div className="h-4 w-24 bg-muted rounded" /></td>
+                    </tr>
+                  ))
                 ) : scores?.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-8 text-center font-pixel text-xl">No records yet. Be the first!</td>
+                    <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                      No records yet. Be the first!
+                    </td>
                   </tr>
                 ) : (
-                  scores?.map((entry, i) => (
-                    <tr key={entry.id} className="hover:bg-muted/50 transition-colors">
-                      <td className="p-4 font-retro text-sm">
-                        {i === 0 && <Medal className="w-5 h-5 text-yellow-500" />}
-                        {i === 1 && <Medal className="w-5 h-5 text-gray-400" />}
-                        {i === 2 && <Medal className="w-5 h-5 text-amber-600" />}
-                        {i > 2 && `#${i + 1}`}
-                      </td>
+                  scores?.map((entry, index) => (
+                    <tr key={entry.id} className="hover:bg-muted/30 transition-colors font-mono text-lg">
                       <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                            <User className="w-4 h-4 text-primary" />
-                          </div>
-                          <span className="font-bold font-pixel text-xl uppercase">{entry.playerName}</span>
-                        </div>
+                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
+                          index === 0 ? "bg-yellow-100 text-yellow-700" :
+                          index === 1 ? "bg-gray-100 text-gray-700" :
+                          index === 2 ? "bg-orange-100 text-orange-700" : ""
+                        }`}>
+                          #{index + 1}
+                        </span>
                       </td>
-                      <td className="p-4 text-right font-retro text-primary">{entry.score}</td>
-                      <td className="p-4 text-right font-pixel text-lg text-muted-foreground hidden sm:table-cell">
+                      <td className="p-4 font-bold uppercase text-primary">{entry.playerName}</td>
+                      <td className="p-4 font-retro">{entry.score.toLocaleString()}</td>
+                      <td className="p-4 hidden md:table-cell text-muted-foreground text-sm flex items-center gap-2">
+                        <Calendar className="w-3 h-3" />
                         {entry.createdAt && format(new Date(entry.createdAt), "MMM d, yyyy")}
                       </td>
                     </tr>

@@ -28,8 +28,8 @@ export default function Home() {
             WHO'S THAT <span className="text-primary block md:inline mt-2 md:mt-0">POKEMON?</span>
           </h1>
           
-          <p className="font-pixel text-xl md:text-2xl text-muted-foreground max-w-lg mx-auto leading-relaxed">
-            Test your knowledge! Can you guess the Pokemon based only on its unique moveset?
+          <p className="font-pixel text-xl md:text-2xl text-muted-foreground max-w-lg mx-auto leading-relaxed font-mono">
+            Test your knowledge! Can you guess the Pokémon based only on its unique moveset?
           </p>
         </motion.div>
 
@@ -104,7 +104,7 @@ function QuickLinkCard({ title, icon: Icon, description, onClick, color }: any) 
           <Icon className="w-8 h-8" />
         </div>
         <h3 className="font-retro text-xs uppercase mt-2">{title}</h3>
-        <p className="font-pixel text-lg text-muted-foreground leading-none">{description}</p>
+        <p className="font-pixel text-lg text-muted-foreground leading-none font-mono">{description}</p>
       </div>
     </RetroCard>
   );

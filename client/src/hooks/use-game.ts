@@ -1,61 +1,41 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type StartGameResponse, type CheckAnswerResponse } from "@shared/routes";
-import { useToast } from "@/hooks/use-toast";
+import { api, buildUrl } from "@shared/routes";
+import { z } from "zod";
 
-// === GAME HOOKS ===
+// Types derived from schema/routes
+type StartGameInput = z.infer<typeof api.game.start.input>;
+type StartGameResponse = z.infer<typeof api.game.start.responses[200]>;
+type AnswerInput = z.infer<typeof api.game.answer.input>;
+type AnswerResponse = z.infer<typeof api.game.answer.responses[200]>;
+type HintInput = z.infer<typeof api.game.hint.input>;
+type HintResponse = z.infer<typeof api.game.hint.responses[200]>;
+type PokemonSearchInput = z.infer<typeof api.pokedex.search.input>;
+type PokemonListResponse = z.infer<typeof api.pokedex.search.responses[200]>;
+type HighScoreInput = z.infer<typeof api.leaderboard.submit.input>;
 
 export function useStartGame() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
   return useMutation({
-    mutationFn: async (maxGen: number) => {
+    mutationFn: async (data: StartGameInput) => {
       const res = await fetch(api.game.start.path, {
-        method: "POST",
+        method: api.game.start.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxGen }),
-        credentials: "include",
+        body: JSON.stringify(data),
       });
-      
-      if (!res.ok) {
-        throw new Error("Failed to start game");
-      }
-      
+      if (!res.ok) throw new Error("Failed to start game");
       return api.game.start.responses[200].parse(await res.json());
-    },
-    onSuccess: () => {
-      // Invalidate any old game state if we were caching it
-      queryClient.invalidateQueries({ queryKey: ["game-state"] });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error starting game",
-        description: error.message,
-        variant: "destructive",
-      });
     },
   });
 }
 
-export function useSubmitGuess() {
+export function useSubmitAnswer() {
   return useMutation({
-    mutationFn: async (data: { 
-      roundToken: string; 
-      guessedPokemonId: number; 
-      attempt: number;
-      hintsUsed: number;
-    }) => {
+    mutationFn: async (data: AnswerInput) => {
       const res = await fetch(api.game.answer.path, {
-        method: "POST",
+        method: api.game.answer.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-        credentials: "include",
       });
-      
-      if (!res.ok) {
-        throw new Error("Failed to submit answer");
-      }
-      
+      if (!res.ok) throw new Error("Failed to submit answer");
       return api.game.answer.responses[200].parse(await res.json());
     },
   });
@@ -63,45 +43,39 @@ export function useSubmitGuess() {
 
 export function useGetHint() {
   return useMutation({
-    mutationFn: async (data: { roundToken: string; type: 'generation' | 'type' }) => {
+    mutationFn: async (data: HintInput) => {
       const res = await fetch(api.game.hint.path, {
-        method: "POST",
+        method: api.game.hint.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-        credentials: "include",
       });
-      
-      if (!res.ok) {
-        throw new Error("Failed to get hint");
-      }
-      
+      if (!res.ok) throw new Error("Failed to get hint");
       return api.game.hint.responses[200].parse(await res.json());
     },
   });
 }
 
-// === POKEDEX HOOKS ===
-
-export function usePokemonList(params?: { maxGen?: string; search?: string; page?: string }) {
-  const queryString = new URLSearchParams(params as Record<string, string>).toString();
-  
+export function useSearchPokemon(query: string, maxGen: string) {
   return useQuery({
-    queryKey: [api.pokedex.list.path, params],
+    queryKey: [api.pokedex.search.path, query, maxGen],
     queryFn: async () => {
-      const res = await fetch(`${api.pokedex.list.path}?${queryString}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch pokemon");
-      return api.pokedex.list.responses[200].parse(await res.json());
+      if (!query || query.length < 2) return [];
+      
+      const url = `${api.pokedex.search.path}?query=${encodeURIComponent(query)}&maxGen=${maxGen}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to search pokemon");
+      return api.pokedex.search.responses[200].parse(await res.json());
     },
+    enabled: query.length >= 2,
+    staleTime: 1000 * 60 * 5, // Cache search results
   });
 }
-
-// === LEADERBOARD HOOKS ===
 
 export function useLeaderboard() {
   return useQuery({
     queryKey: [api.leaderboard.list.path],
     queryFn: async () => {
-      const res = await fetch(api.leaderboard.list.path, { credentials: "include" });
+      const res = await fetch(api.leaderboard.list.path);
       if (!res.ok) throw new Error("Failed to fetch leaderboard");
       return api.leaderboard.list.responses[200].parse(await res.json());
     },
@@ -110,36 +84,18 @@ export function useLeaderboard() {
 
 export function useSubmitScore() {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
-
   return useMutation({
-    mutationFn: async (data: { playerName: string; score: number; genFilter?: number }) => {
+    mutationFn: async (data: HighScoreInput) => {
       const res = await fetch(api.leaderboard.submit.path, {
-        method: "POST",
+        method: api.leaderboard.submit.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-        credentials: "include",
       });
-      
-      if (!res.ok) {
-        throw new Error("Failed to submit score");
-      }
-      
+      if (!res.ok) throw new Error("Failed to submit score");
       return api.leaderboard.submit.responses[201].parse(await res.json());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leaderboard.list.path] });
-      toast({
-        title: "Score Saved!",
-        description: "You've been added to the Hall of Fame.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to save score. Try again.",
-        variant: "destructive",
-      });
     },
   });
 }

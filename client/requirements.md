@@ -1,9 +1,13 @@
 ## Packages
-framer-motion | Essential for smooth game state transitions and effects
+framer-motion | Essential for game animations and transitions
 canvas-confetti | For victory celebrations
 @types/canvas-confetti | Types for confetti
+cmdk | For the accessible autocomplete/combobox component
+clsx | Utility for conditional classes
+tailwind-merge | Utility for merging tailwind classes
 
 ## Notes
-Integration with backend for game logic (start, answer, hint)
-Pokemon images are external URLs
-Font strategy: 'Press Start 2P' for headers, 'VT323' or 'Jersey 10' for text bodies to match the retro aesthetic
+The game requires a "Retro/Pixel" aesthetic.
+The autocomplete component needs to query the backend `/api/pokemon/search` endpoint.
+Move cards need specific type-based coloring (Fire=Red, Water=Blue, etc.).
+Font imports are critical for the retro feel.

@@ -1,29 +1,37 @@
 import { cn } from "@/lib/utils";
+import { ReactNode } from "react";
 
-interface RetroCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
+interface RetroCardProps {
+  children: ReactNode;
+  className?: string;
   variant?: "default" | "screen" | "primary" | "secondary";
+  onClick?: () => void;
 }
 
-export function RetroCard({ children, className, variant = "default", ...props }: RetroCardProps) {
+export function RetroCard({ children, className, variant = "default", onClick }: RetroCardProps) {
   const variants = {
-    default: "bg-white border-4 border-foreground/80 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)]",
-    screen: "bg-[#9bbc0f] inner-shadow border-4 border-foreground/60 shadow-inner", // Gameboy green
-    primary: "bg-primary text-primary-foreground border-4 border-primary-foreground/50",
-    secondary: "bg-secondary text-secondary-foreground border-4 border-secondary-foreground/50",
+    default: "bg-white border-foreground",
+    screen: "bg-[#9da525] border-[#8b9121] inset-shadow text-[#0f380f]", // Original Gameboy green tint
+    primary: "bg-primary text-primary-foreground border-primary-foreground",
+    secondary: "bg-secondary text-secondary-foreground border-foreground",
   };
 
   return (
-    <div className={cn("rounded-sm p-4 relative", variants[variant], className)} {...props}>
-      {/* Corner accents for tech feel */}
-      {variant === 'default' && (
-        <>
-          <div className="absolute top-1 left-1 w-2 h-2 border-t-2 border-l-2 border-foreground/20" />
-          <div className="absolute top-1 right-1 w-2 h-2 border-t-2 border-r-2 border-foreground/20" />
-          <div className="absolute bottom-1 left-1 w-2 h-2 border-b-2 border-l-2 border-foreground/20" />
-          <div className="absolute bottom-1 right-1 w-2 h-2 border-b-2 border-r-2 border-foreground/20" />
-        </>
+    <div 
+      onClick={onClick}
+      className={cn(
+        "relative rounded-sm p-4 pixel-border transition-all duration-200",
+        variants[variant],
+        onClick && "cursor-pointer active:translate-y-1 active:shadow-none hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)]",
+        className
       )}
+    >
+      {/* Corner accents for that mechanical feel */}
+      <div className="absolute top-1 left-1 w-1 h-1 bg-current opacity-20" />
+      <div className="absolute top-1 right-1 w-1 h-1 bg-current opacity-20" />
+      <div className="absolute bottom-1 left-1 w-1 h-1 bg-current opacity-20" />
+      <div className="absolute bottom-1 right-1 w-1 h-1 bg-current opacity-20" />
+      
       {children}
     </div>
   );
