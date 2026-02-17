@@ -20,22 +20,22 @@ export function MoveCard({ name, type, power, accuracy, pp, index }: MoveCardPro
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
       className={cn(
-        "relative overflow-hidden rounded-lg p-4 pixel-border-sm bg-white hover:scale-[1.02] transition-transform",
-        "flex flex-col justify-between min-h-[140px]"
+        "relative overflow-hidden rounded-lg p-4 pixel-border-sm hover:scale-[1.02] transition-transform",
+        "flex flex-col justify-between min-h-[140px]",
+        `type-${type.toLowerCase()}`
       )}
     >
       <div className={cn(
-        "absolute top-0 right-0 px-3 py-1 text-xs font-bold uppercase rounded-bl-lg border-l-2 border-b-2 border-black/10",
-        typeClass
+        "absolute top-0 right-0 px-3 py-1 text-xs font-bold uppercase rounded-bl-lg border-l-2 border-b-2 border-black/10 bg-black/20 text-white"
       )}>
         {type}
       </div>
 
-      <h3 className="text-xl md:text-2xl font-bold mt-4 mb-2 capitalize leading-tight">
+      <h3 className="text-xl md:text-2xl font-bold mt-4 mb-2 capitalize leading-tight text-white drop-shadow-md">
         {name.replace(/-/g, " ")}
       </h3>
 
-      <div className="grid grid-cols-3 gap-2 mt-auto text-sm text-muted-foreground font-mono bg-muted/30 p-2 rounded">
+      <div className="grid grid-cols-3 gap-2 mt-auto text-sm font-mono bg-black/20 p-2 rounded text-white">
         <div className="flex flex-col items-center">
           <span className="text-[10px] uppercase tracking-wider opacity-70">Power</span>
           <span className="font-bold text-foreground">{power || "-"}</span>

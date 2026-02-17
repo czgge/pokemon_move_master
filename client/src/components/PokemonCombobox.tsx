@@ -76,9 +76,10 @@ export function PokemonCombobox({ onSelect, maxGen, disabled }: PokemonComboboxP
                   key={pokemon.id}
                   value={pokemon.name}
                   onSelect={() => {
+                    console.log("Selected:", pokemon.name);
                     onSelect(pokemon.id, pokemon.name);
+                    setQuery(pokemon.name.replace(/-default.*/, ""));
                     setOpen(false);
-                    setQuery(""); // Reset query after selection? Or keep it?
                   }}
                 >
                   <div className="flex items-center gap-3 w-full">
