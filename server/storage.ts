@@ -407,12 +407,8 @@ class DatabaseStorage implements IStorage {
     
     const targetSpeciesBase = targetPokemon.speciesName.split('-')[0];
     
-    // Find ALL Pokemon that can learn these moves (directly OR through pre-evolutions)
-    // Step 1: Find Pokemon that DIRECTLY learn all moves
-    const directLearners = await db.select({ 
-        pokemonId: pokemonMoves.pokemonId,
-        count: sql<number>`count(distinct ${pokemonMoves.moveId})`
-      })
+    // Step 1: Find Pokemon that learn at least ONE of the moves (candidates)
+    const candidates = await db.selectDistinct({ pokemonId: pokemonMoves.pokemonId })
       .from(pokemonMoves)
       .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
       .where(and(
@@ -420,35 +416,41 @@ class DatabaseStorage implements IStorage {
         inArray(pokemonMoves.versionGroupId, validVersionIds),
         lte(pokemon.generationId, maxGen),
         sql`${pokemon.speciesName} NOT LIKE ${targetSpeciesBase + '%'}` // Exclude same species
-      ))
-      .groupBy(pokemonMoves.pokemonId)
-      .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIds.length}`);
+      ));
     
-    const directLearnerIds = directLearners.map(p => p.pokemonId);
+    const candidateIds = candidates.map(c => c.pokemonId);
     
-    // Step 2: For each direct learner, add their evolutions
-    const allPokemonIds = new Set<number>(directLearnerIds);
+    if (candidateIds.length === 0) {
+      return true; // No candidates, moveset is unique
+    }
     
-    for (const learnerId of directLearnerIds) {
-      // Find Pokemon that evolve FROM this learner
-      const evos = await db.select()
-        .from(evolutions)
-        .where(eq(evolutions.evolvedSpeciesId, learnerId));
+    // Step 2: For each candidate, check if it can learn ALL moves (including through pre-evolutions)
+    const pokemonThatCanLearnAll = new Set<number>();
+    
+    for (const candidateId of candidateIds) {
+      // Get this Pokemon + its pre-evolutions
+      const pokemonWithPreEvos = await this.getPokemonWithPreEvolutions(candidateId);
       
-      for (const evo of evos) {
-        // Check if evolution is within gen limit
-        const [evoPokemon] = await db.select({ generationId: pokemon.generationId })
-          .from(pokemon)
-          .where(eq(pokemon.id, evo.evolvesIntoSpeciesId));
-        
-        if (evoPokemon && evoPokemon.generationId <= maxGen) {
-          allPokemonIds.add(evo.evolvesIntoSpeciesId);
-        }
+      // Get moves this Pokemon (and its pre-evolutions) can learn
+      const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+        .from(pokemonMoves)
+        .where(and(
+          inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
+          inArray(pokemonMoves.versionGroupId, validVersionIds)
+        ));
+      
+      const pokemonMoveIds = pokemonMovesList.map(m => m.moveId);
+      
+      // Check if this Pokemon can learn ALL the required moves
+      const canLearnAll = moveIds.every(moveId => pokemonMoveIds.includes(moveId));
+      
+      if (canLearnAll) {
+        pokemonThatCanLearnAll.add(candidateId);
       }
     }
     
-    // The moveset is unique if no other Pokemon (including evolutions) can learn it
-    return allPokemonIds.size === 0;
+    // The moveset is unique if no other Pokemon can learn it
+    return pokemonThatCanLearnAll.size === 0;
   }
 
   async seedGenerations(data: any[]) {
