@@ -800,7 +800,8 @@ export async function registerRoutes(
     }
   });
 
-  seedDatabase().catch(console.error);
+  // Seeding is now done manually via /admin endpoint to avoid startup issues
+  // seedDatabase().catch(console.error);
 
   return httpServer;
 }
