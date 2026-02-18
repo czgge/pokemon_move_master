@@ -999,6 +999,7 @@ async function seedDatabase(force: boolean = false) {
 
     return {
       id: parseInt(r.id),
+      ndexId: parseInt(r.ndex_id),
       name: r.form_name ? `${r.identifier} (${r.form_name})` : r.identifier.replace(/-default$/, ''),
       speciesName: r.identifier,
       generationId: gen,
@@ -1290,6 +1291,17 @@ async function seedDatabase(force: boolean = false) {
     console.log(`Loaded ${evolutionsData.length} evolution rows from CSV`);
     console.log("Evolution CSV sample (first 3 rows):", JSON.stringify(evolutionsData.slice(0, 3), null, 2));
     
+    // Create a map from ndex_id to id for Pokemon lookup
+    const pokemonIdMap = new Map<number, number>();
+    const allPokemon = await db.select({ id: pokemon.id, ndexId: pokemon.ndexId })
+      .from(pokemon);
+    allPokemon.forEach(p => {
+      if (p.ndexId) {
+        pokemonIdMap.set(p.ndexId, p.id);
+      }
+    });
+    console.log(`Created Pokemon ID map with ${pokemonIdMap.size} entries`);
+    
     // Group by evolution tree and grid_row to handle branching evolutions (like Eevee)
     const evolutionTrees = new Map<string, Map<string, any[]>>();
     evolutionsData.forEach((row: any) => {
@@ -1327,17 +1339,29 @@ async function seedDatabase(force: boolean = false) {
           
           // Only link if next column is exactly 1 more (direct evolution)
           if (nextCol === currentCol + 1) {
-            const evo = {
-              evolvedSpeciesId: parseInt(current.pokemon_form_id),
-              evolvesIntoSpeciesId: parseInt(next.pokemon_form_id),
-              evolutionTriggerId: null,
-              minLevel: null
-            };
-            mappedEvolutions.push(evo);
+            // Convert pokemon_form_id (which is ndex_id) to actual database id
+            const currentNdexId = parseInt(current.pokemon_form_id);
+            const nextNdexId = parseInt(next.pokemon_form_id);
             
-            // Log first few evolutions for debugging
-            if (mappedEvolutions.length <= 5) {
-              console.log(`Evolution ${mappedEvolutions.length}: Tree ${treeId}, Row ${rowId}, ${current.pokemon_form_id} (col ${currentCol}) -> ${next.pokemon_form_id} (col ${nextCol})`);
+            const currentId = pokemonIdMap.get(currentNdexId);
+            const nextId = pokemonIdMap.get(nextNdexId);
+            
+            if (currentId && nextId) {
+              const evo = {
+                evolvedSpeciesId: currentId,
+                evolvesIntoSpeciesId: nextId,
+                evolutionTriggerId: null,
+                minLevel: null
+              };
+              mappedEvolutions.push(evo);
+              
+              // Log first few evolutions for debugging
+              if (mappedEvolutions.length <= 5) {
+                console.log(`Evolution ${mappedEvolutions.length}: Tree ${treeId}, Row ${rowId}, ndex ${currentNdexId} (id ${currentId}) -> ndex ${nextNdexId} (id ${nextId})`);
+              }
+            } else {
+              if (!currentId) console.warn(`Could not find Pokemon with ndex_id ${currentNdexId}`);
+              if (!nextId) console.warn(`Could not find Pokemon with ndex_id ${nextNdexId}`);
             }
           }
         }
