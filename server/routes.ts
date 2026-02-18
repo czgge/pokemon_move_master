@@ -38,8 +38,8 @@ export async function registerRoutes(
       let roundData = null;
       let response = null;
 
-      // Try to find a valid unique moveset up to 500 times
-      while (attempts < 500) {
+      // Try to find a valid unique moveset up to 100 times (reduced from 500)
+      while (attempts < 100) {
         attempts++;
         
         // 1. Get a random Pokemon
@@ -51,8 +51,8 @@ export async function registerRoutes(
         if (validMoves.length < 4) continue;
         
         // 3. Select 4 random unique moves
-        // Try different move combinations for the same pokemon
-        for (let moveSetAttempt = 0; moveSetAttempt < 10; moveSetAttempt++) {
+        // Try only 3 different move combinations per pokemon (reduced from 10)
+        for (let moveSetAttempt = 0; moveSetAttempt < 3; moveSetAttempt++) {
           const shuffledMoves = validMoves.sort(() => 0.5 - Math.random());
           const selectedMoves = shuffledMoves.slice(0, 4);
           const moveIds = selectedMoves.map(m => m.id);
