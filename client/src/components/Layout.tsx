@@ -47,7 +47,7 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      <main className="flex-1 container py-6 md:py-10 animate-in fade-in duration-500">
+      <main className="flex-1 container mx-auto px-4 py-6 md:py-10 animate-in fade-in duration-500 max-w-7xl">
         {children}
       </main>
 
