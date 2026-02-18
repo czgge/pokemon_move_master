@@ -325,6 +325,30 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to check evolution data
+  app.get("/api/debug/evolutions/:pokemonId", async (req, res) => {
+    try {
+      const pokemonId = parseInt(req.params.pokemonId);
+      
+      // Get Pokemon info
+      const pkmn = await db.select().from(pokemon).where(eq(pokemon.id, pokemonId)).limit(1);
+      
+      // Get evolutions where this Pokemon evolves
+      const evolvesInto = await db.select().from(evolutions).where(eq(evolutions.evolvedSpeciesId, pokemonId));
+      
+      // Get evolutions where this Pokemon is the result
+      const evolvedFrom = await db.select().from(evolutions).where(eq(evolutions.evolvesIntoSpeciesId, pokemonId));
+      
+      res.json({
+        pokemon: pkmn[0],
+        evolvesInto,
+        evolvedFrom
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get(api.pokedex.list.path, async (req, res) => {
     const maxGen = req.query.maxGen ? parseInt(req.query.maxGen as string) : undefined;
     const search = req.query.search as string;
@@ -395,8 +419,8 @@ export async function registerRoutes(
         .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`);
 
         // Now, for each Pokemon that directly learns these moves, also include their evolutions
-        // Logic: If Pikachu learns Quick Attack, then Raichu should also appear
-        // (because Raichu inherits moves from Pikachu via pre-evolution)
+        // Logic: If Exeggcute learns Sleep Powder, then Exeggutor should also appear
+        // (because Exeggutor can learn Sleep Powder via pre-evolution)
         const pokemonWithEvolutions = new Set<number>();
         
         console.log(`[Pokedex] Found ${directResults.length} Pokemon that directly learn the moves:`, directResults.map(p => p.name));
@@ -404,14 +428,16 @@ export async function registerRoutes(
         for (const pkmn of directResults) {
           pokemonWithEvolutions.add(pkmn.id);
           
-          // Find all Pokemon that have this Pokemon as a pre-evolution
-          // (i.e., find evolutions of this Pokemon)
+          // Find all Pokemon that this Pokemon evolves into
           const findEvolutions = async (pokemonId: number) => {
             const evos = await db.select()
               .from(evolutions)
               .where(eq(evolutions.evolvedSpeciesId, pokemonId));
             
             console.log(`[Pokedex] Looking for evolutions of Pokemon ID ${pokemonId}, found ${evos.length}`);
+            if (evos.length > 0) {
+              console.log(`[Pokedex] Evolution data:`, evos);
+            }
             
             for (const evo of evos) {
               if (!pokemonWithEvolutions.has(evo.evolvesIntoSpeciesId)) {
@@ -1422,17 +1448,43 @@ async function seedDatabase(force: boolean = false) {
     console.log(`Loaded ${evolutionsData.length} evolution rows from CSV`);
     console.log("Evolution CSV sample (first 3 rows):", JSON.stringify(evolutionsData.slice(0, 3), null, 2));
     
-    // Create a map from id (form_id) to database id for Pokemon lookup
-    // The evolution CSV uses pokemon_form_id which corresponds to the "id" column in pokemon_forms CSV
-    const pokemonIdMap = new Map<number, number>();
-    const allPokemon = await db.select({ id: pokemon.id, ndexId: pokemon.ndexId })
-      .from(pokemon);
+    // Get all Pokemon from database with their ndex_id and speciesName for proper mapping
+    const allPokemon = await db.select({
+      id: pokemon.id,
+      name: pokemon.name,
+      ndexId: pokemon.ndexId,
+      speciesName: pokemon.speciesName
+    }).from(pokemon);
     
-    // Map using the database ID directly (pokemon_form_id in evolution CSV = id in pokemon_forms CSV)
-    // Since we're using the same IDs from the CSV, the mapping is 1:1
-    allPokemon.forEach(p => {
-      pokemonIdMap.set(p.id, p.id); // Direct mapping: form_id -> database_id
+    console.log(`Total Pokemon in database: ${allPokemon.length}`);
+    console.log(`Sample Pokemon (first 10):`, allPokemon.slice(0, 10).map(p => `ID:${p.id} Name:${p.name} Ndex:${p.ndexId} Species:${p.speciesName}`));
+    
+    // Read pokemon_forms CSV to get the mapping from form_id to ndex_id + identifier
+    const pokemonFormsData = await parseCsv('attached_assets/pokemon_forms_1771232352573.csv');
+    
+    // Create lookup: pokemon_form_id -> { ndex_id, identifier }
+    const formIdToInfo = new Map<number, { ndexId: number, identifier: string }>();
+    pokemonFormsData.forEach((row: any) => {
+      formIdToInfo.set(parseInt(row.id), {
+        ndexId: parseInt(row.ndex_id),
+        identifier: row.identifier
+      });
     });
+    
+    // Now create the mapping: pokemon_form_id -> database ID
+    const pokemonIdMap = new Map<number, number>();
+    formIdToInfo.forEach((info, formId) => {
+      // Find Pokemon in database with matching ndex_id and speciesName
+      const match = allPokemon.find(p => 
+        p.ndexId === info.ndexId && 
+        p.speciesName === info.identifier
+      );
+      
+      if (match) {
+        pokemonIdMap.set(formId, match.id);
+      }
+    });
+    
     console.log(`Created Pokemon ID map with ${pokemonIdMap.size} entries`);
     
     // Group by evolution tree and grid_row to handle branching evolutions (like Eevee)
