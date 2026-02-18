@@ -390,7 +390,7 @@ export default function Pokedex() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden bg-white rounded-lg pixel-border p-6 flex flex-col"
+              className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden bg-white rounded-lg pixel-border p-4 lg:p-6 flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               <button 
@@ -400,17 +400,17 @@ export default function Pokedex() {
                 <X className="w-6 h-6" />
               </button>
 
-              <div className="flex flex-col md:flex-row gap-8 mb-6 overflow-hidden flex-1">
-                <div className="w-full md:w-1/4 flex flex-col items-center shrink-0">
-                  <div className="w-40 h-40 bg-muted/30 rounded-lg p-4 mb-4 flex items-center justify-center">
+              <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 mb-6 overflow-hidden flex-1">
+                <div className="w-full lg:w-1/4 flex flex-col items-center shrink-0">
+                  <div className="w-32 h-32 lg:w-40 lg:h-40 bg-muted/30 rounded-lg p-4 mb-3 flex items-center justify-center">
                     <img 
                       src={selectedPokemon.imageUrl} 
                       alt={selectedPokemon.name} 
                       className="w-full h-full object-contain pixelated"
                     />
                   </div>
-                  <h2 className="text-xl font-retro text-center mb-2 tracking-tighter uppercase">{formatName(selectedPokemon.name)}</h2>
-                  <div className="flex justify-center gap-2 mb-4">
+                  <h2 className="text-lg lg:text-xl font-retro text-center mb-2 tracking-tighter uppercase">{formatName(selectedPokemon.name)}</h2>
+                  <div className="flex justify-center gap-2 mb-3">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold type-${selectedPokemon.type1.toLowerCase()}`}>
                       {selectedPokemon.type1}
                     </span>
@@ -421,9 +421,28 @@ export default function Pokedex() {
                     )}
                   </div>
                   
-                  {/* Base Stats */}
+                  {/* Base Stats - Compact on mobile, full on desktop */}
                   {selectedPokemon.hp && (
-                    <div className="w-full bg-muted/20 p-4 rounded-lg mb-4 border-2 border-border">
+                    <div className="w-full bg-muted/20 p-3 lg:p-4 rounded-lg mb-3 lg:mb-4 border-2 border-border">
+                      <p className="text-xs font-bold uppercase text-center mb-2 lg:mb-4 text-muted-foreground">Base Stats</p>
+                      {/* Mobile: Compact horizontal layout */}
+                      <div className="lg:hidden grid grid-cols-3 gap-2 text-center">
+                        {[
+                          { label: 'HP', value: selectedPokemon.hp, color: 'bg-green-500' },
+                          { label: 'ATK', value: selectedPokemon.attack, color: 'bg-red-500' },
+                          { label: 'DEF', value: selectedPokemon.defense, color: 'bg-yellow-500' },
+                          { label: 'SPA', value: selectedPokemon.specialAttack, color: 'bg-blue-500' },
+                          { label: 'SPD', value: selectedPokemon.specialDefense, color: 'bg-purple-500' },
+                          { label: 'SPE', value: selectedPokemon.speed, color: 'bg-pink-500' }
+                        ].map(stat => (
+                          <div key={stat.label} className="flex flex-col items-center">
+                            <span className="text-[10px] font-mono font-bold text-muted-foreground mb-1">{stat.label}</span>
+                            <span className={cn("text-sm font-mono font-bold px-2 py-0.5 rounded", stat.color, "text-white")}>{stat.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Desktop: Full bars layout */}
+                      <div className="hidden lg:block space-y-3">
                       <p className="text-xs font-bold uppercase text-center mb-4 text-muted-foreground">Base Stats</p>
                       <div className="space-y-3">
                         {[
@@ -445,28 +464,29 @@ export default function Pokedex() {
                             <span className="text-sm font-mono font-bold w-12">{stat.value}</span>
                           </div>
                         ))}
-                        <div className="pt-2 border-t border-border mt-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm font-mono font-bold">TOTAL</span>
-                            <span className="text-base font-mono font-bold text-primary">
-                              {selectedPokemon.hp + selectedPokemon.attack + selectedPokemon.defense + 
-                               selectedPokemon.specialAttack + selectedPokemon.specialDefense + selectedPokemon.speed}
-                            </span>
-                          </div>
+                      </div>
+                      {/* Total - shown on both mobile and desktop */}
+                      <div className="pt-2 border-t border-border mt-2 lg:mt-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs lg:text-sm font-mono font-bold">TOTAL</span>
+                          <span className="text-sm lg:text-base font-mono font-bold text-primary">
+                            {selectedPokemon.hp + selectedPokemon.attack + selectedPokemon.defense + 
+                             selectedPokemon.specialAttack + selectedPokemon.specialDefense + selectedPokemon.speed}
+                          </span>
                         </div>
                       </div>
                     </div>
                   )}
                   
-                  <div className="w-full space-y-2 mb-4">
+                  <div className="w-full space-y-2 mb-3">
                     <p className="text-xs font-bold uppercase text-muted-foreground text-center">Select Generation</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-1.5 lg:gap-2">
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(gen => (
                         <button
                           key={gen}
                           onClick={() => setSelectedGen(gen)}
                           className={cn(
-                            "py-2 px-2 rounded font-retro text-xs border-2 transition-colors",
+                            "py-1.5 lg:py-2 px-1 lg:px-2 rounded font-retro text-[10px] lg:text-xs border-2 transition-colors",
                             selectedGen === gen 
                               ? "bg-primary border-primary text-white" 
                               : "bg-white border-border text-foreground hover:border-primary"
@@ -478,13 +498,13 @@ export default function Pokedex() {
                     </div>
                   </div>
 
-                  <div className="w-full bg-accent/10 p-3 rounded-lg border-2 border-accent/20">
+                  <div className="w-full bg-accent/10 p-2 lg:p-3 rounded-lg border-2 border-accent/20">
                     <p className="text-xs font-bold uppercase mb-2 text-accent-foreground">Search Moves</p>
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <input 
                         placeholder="Quick find..."
-                        className="w-full pl-8 pr-2 py-2 rounded border-2 border-border focus:outline-none focus:border-primary text-sm font-mono"
+                        className="w-full pl-8 pr-2 py-2 rounded border-2 border-border focus:outline-none focus:border-primary text-xs lg:text-sm font-mono"
                         value={pokemonMoveSearch}
                         onChange={(e) => setPokemonMoveSearch(e.target.value)}
                       />
@@ -492,9 +512,9 @@ export default function Pokedex() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-[300px] lg:min-h-0">
                   <div className="mb-4">
-                    <h3 className="text-lg font-retro tracking-tighter mb-3">LEARNSET (GEN {selectedGen})</h3>
+                    <h3 className="text-base lg:text-lg font-retro tracking-tighter mb-3">LEARNSET (GEN {selectedGen})</h3>
                   </div>
                   
                   {isLoadingMoves ? (
