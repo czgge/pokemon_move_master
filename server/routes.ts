@@ -150,10 +150,6 @@ export async function registerRoutes(
         if (isPreEvolution) {
           // The guessed Pokemon is a pre-evolution of the correct one
           // Now check if the guessed Pokemon (and ITS pre-evolutions) can learn all the moves
-        
-        if (isPreEvolution) {
-          // The guessed Pokemon is a pre-evolution of the correct one
-          // Now check if the guessed Pokemon (and ITS pre-evolutions) can learn all the moves
           console.log(`[Answer] Calculating missing moves for Pokemon ${guessedPokemonId} (including pre-evos)`);
           
           // Get Pokemon names for logging
