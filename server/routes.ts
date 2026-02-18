@@ -133,23 +133,89 @@ export async function registerRoutes(
         }
       }
       
-      // If still not correct, check if the guessed Pokemon is a PRE-EVOLUTION of the correct one
-      // Logic: If the correct answer is Salamence with Fly, you can answer Salamence
-      //        If the correct answer is Salamence with a move Bagon learns, you can answer Bagon
-      //        But if the correct answer is Bagon with Fly, you CANNOT answer Salamence (Bagon can't learn Fly yet)
+      // If still not correct, check evolution relationships
+      // Logic: 
+      // 1. If correct is Salamence with moves Bagon learns, you can answer Bagon (going backward) ✅
+      // 2. If correct is Bagon with Fly, you CANNOT answer Salamence (going forward) ❌
+      // 3. If correct is Eevee with Eevee moves, you CAN answer Leafeon/Umbreon (going forward from base) ✅
+      // 4. If correct is Leafeon, you CANNOT answer Umbreon (branching) ❌
       if (!isCorrect) {
-        // Get pre-evolutions of the CORRECT Pokemon
-        // If the guessed Pokemon is in this chain, it means the correct Pokemon can learn moves from the guessed one
+        // Check TWO cases:
+        // Case A: Guessed Pokemon is a PRE-EVOLUTION of correct Pokemon (going backward)
         const correctPokemonChain = await storage.getPokemonWithPreEvolutions(roundData.correctPokemonId);
         console.log(`[Answer] Correct Pokemon ${roundData.correctPokemonId} with pre-evolutions:`, correctPokemonChain);
-        
-        // Check if the guessed Pokemon is in the correct Pokemon's pre-evolution chain
         const isPreEvolution = correctPokemonChain.includes(guessedPokemonId);
         console.log(`[Answer] Is guessed Pokemon a pre-evolution of correct? ${isPreEvolution}`);
         
+        // Case B: Correct Pokemon is a PRE-EVOLUTION of guessed Pokemon (going forward from base)
+        const guessedPokemonChain = await storage.getPokemonWithPreEvolutions(guessedPokemonId);
+        console.log(`[Answer] Guessed Pokemon ${guessedPokemonId} with pre-evolutions:`, guessedPokemonChain);
+        const correctIsPreEvolution = guessedPokemonChain.includes(roundData.correctPokemonId);
+        console.log(`[Answer] Is correct Pokemon a pre-evolution of guessed? ${correctIsPreEvolution}`);
+        
+        // Determine if we should check moves
+        let shouldCheckMoves = false;
+        
         if (isPreEvolution) {
-          // The guessed Pokemon is a pre-evolution of the correct one
-          // Now check if the guessed Pokemon (and ITS pre-evolutions) can learn all the moves
+          // Case A: Guessed is a pre-evolution of correct (going backward)
+          // Example: Correct=Salamence, Guess=Bagon - ALWAYS allowed if moves match
+          console.log(`[Answer] Case A: Guessed is pre-evolution of correct`);
+          shouldCheckMoves = true;
+        } else if (correctIsPreEvolution) {
+          // Case B: Correct is a pre-evolution of guessed (going forward)
+          // Example: Correct=Eevee, Guess=Leafeon
+          // ONLY allowed if correct Pokemon is a BASE form AND can learn all the puzzle moves
+          const correctHasPreEvos = correctPokemonChain.length > 1;
+          console.log(`[Answer] Case B: Correct is pre-evolution of guessed`);
+          console.log(`[Answer] Does correct have pre-evolutions? ${correctHasPreEvos}`);
+          
+          if (!correctHasPreEvos) {
+            // Correct Pokemon is a base form - check if the CORRECT Pokemon can learn all moves
+            console.log(`[Answer] Correct is a base form - checking if CORRECT Pokemon can learn all moves`);
+            
+            const puzzleMoveNames = roundData.moves;
+            const puzzleMoves = await db.select({ id: moves.id, name: moves.name })
+              .from(moves)
+              .where(inArray(moves.name, puzzleMoveNames));
+            const puzzleMoveIds = puzzleMoves.map(m => m.id);
+            
+            // Get valid versions for the generation
+            const validVersions = await db.select({ id: versions.id })
+              .from(versions)
+              .where(lte(versions.generationId, roundData.gen));
+            const validVersionIds = validVersions.map(v => v.id);
+            
+            // Get the CORRECT Pokemon + its pre-evolutions
+            const correctPokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(roundData.correctPokemonId);
+            
+            // Get moves the CORRECT Pokemon can learn
+            const correctPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+              .from(pokemonMoves)
+              .where(and(
+                inArray(pokemonMoves.pokemonId, correctPokemonWithPreEvos),
+                inArray(pokemonMoves.versionGroupId, validVersionIds)
+              ));
+            
+            const correctMoveIds = correctPokemonMoves.map(m => m.moveId);
+            
+            // Check if CORRECT Pokemon can learn all puzzle moves
+            const correctCanLearnAll = puzzleMoveIds.every(moveId => correctMoveIds.includes(moveId));
+            console.log(`[Answer] Can CORRECT Pokemon learn all moves? ${correctCanLearnAll}`);
+            
+            if (correctCanLearnAll) {
+              // The puzzle is about the base form, so evolutions are accepted
+              console.log(`[Answer] Puzzle is about base form - checking if guessed can also learn all moves`);
+              shouldCheckMoves = true;
+            } else {
+              console.log(`[Answer] Puzzle is NOT about base form (has moves base can't learn) - rejecting`);
+            }
+          } else {
+            console.log(`[Answer] Correct is NOT a base form - rejecting forward evolution`);
+          }
+        }
+        
+        // If we should check moves, validate that guessed Pokemon can learn all puzzle moves
+        if (shouldCheckMoves) {
           console.log(`[Answer] Calculating missing moves for Pokemon ${guessedPokemonId} (including pre-evos)`);
           
           // Get Pokemon names for logging
@@ -218,9 +284,9 @@ export async function registerRoutes(
           if (canLearnAll) {
             console.log(`[Answer] Accepting evolution as correct answer!`);
             isCorrect = true;
-            missingMoves = []; // Clear missing moves since it's correct
+            missingMoves = [];
           } else {
-            console.log(`[Answer] Rejecting evolution - cannot learn all moves`);
+            console.log(`[Answer] Rejecting - cannot learn all moves`);
           }
         } else {
           console.log(`[Answer] Not in same evolution family - rejecting`);
