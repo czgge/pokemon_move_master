@@ -91,7 +91,9 @@ export const highScores = pgTable("high_scores", {
 
 // === SCHEMA & TYPES ===
 
-export const insertHighScoreSchema = createInsertSchema(highScores).omit({ id: true, createdAt: true });
+export const insertHighScoreSchema = createInsertSchema(highScores).omit({ id: true, createdAt: true }).extend({
+  playerName: z.string().min(1).max(20),
+});
 
 export type Pokemon = typeof pokemon.$inferSelect;
 export type Move = typeof moves.$inferSelect;
