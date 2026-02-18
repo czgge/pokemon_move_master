@@ -179,21 +179,24 @@ export async function registerRoutes(
           const validVersionIds = validVersions.map(v => v.id);
           
           console.log(`[Answer] Valid version IDs for gen ${roundData.gen}:`, validVersionIds.length);
-          console.log(`[Answer] Guessed Pokemon evolution chain IDs:`, guessedChain);
           
-          // Get names of Pokemon in evolution chain for debugging
-          if (guessedChain.length > 0) {
+          // Get the guessed Pokemon + its pre-evolutions (NOT future evolutions)
+          const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(guessedPokemonId);
+          console.log(`[Answer] Guessed Pokemon with pre-evolutions IDs:`, pokemonWithPreEvos);
+          
+          // Get names of Pokemon in pre-evolution chain for debugging
+          if (pokemonWithPreEvos.length > 0) {
             const chainPokemon = await db.select({ id: pokemon.id, name: pokemon.name })
               .from(pokemon)
-              .where(inArray(pokemon.id, guessedChain));
-            console.log(`[Answer] Evolution chain Pokemon:`, chainPokemon);
+              .where(inArray(pokemon.id, pokemonWithPreEvos));
+            console.log(`[Answer] Pre-evolution chain Pokemon:`, chainPokemon);
           }
           
           // Get moves the guessed Pokemon AND its pre-evolutions can learn
           const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
             .from(pokemonMoves)
             .where(and(
-              inArray(pokemonMoves.pokemonId, guessedChain),
+              inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
               inArray(pokemonMoves.versionGroupId, validVersionIds)
             ));
           
@@ -238,11 +241,14 @@ export async function registerRoutes(
             .where(lte(versions.generationId, roundData.gen));
           const validVersionIds = validVersions.map(v => v.id);
           
+          // Get the guessed Pokemon + its pre-evolutions
+          const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(guessedPokemonId);
+          
           // Get moves the guessed Pokemon AND its pre-evolutions can learn
           const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
             .from(pokemonMoves)
             .where(and(
-              inArray(pokemonMoves.pokemonId, guessedChain),
+              inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
               inArray(pokemonMoves.versionGroupId, validVersionIds)
             ));
           
@@ -365,7 +371,8 @@ export async function registerRoutes(
           search ? sql`lower(${pokemon.name}) LIKE ${`%${search.toLowerCase()}%`}` : undefined
         ].filter(Boolean);
 
-        const results = await db.select({ 
+        // First, get all Pokemon that directly learn these moves
+        const directResults = await db.select({ 
           id: pokemon.id,
           name: pokemon.name,
           speciesName: pokemon.speciesName,
@@ -386,22 +393,67 @@ export async function registerRoutes(
         .innerJoin(versions, eq(pokemonMoves.versionGroupId, versions.id))
         .where(and(...whereConditions))
         .groupBy(pokemon.id, pokemon.name, pokemon.speciesName, pokemon.generationId, pokemon.type1, pokemon.type2, pokemon.imageUrl, pokemon.cryUrl, pokemon.hp, pokemon.attack, pokemon.defense, pokemon.specialAttack, pokemon.specialDefense, pokemon.speed)
-        .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`)
-        .limit(limit)
-        .offset(offset);
-
-        // Subquery for total count
-        const totalItems = await db.select({ 
-          id: pokemon.id 
-        })
-        .from(pokemonMoves)
-        .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
-        .innerJoin(versions, eq(pokemonMoves.versionGroupId, versions.id))
-        .where(and(...whereConditions))
-        .groupBy(pokemon.id)
         .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`);
 
-        return res.json({ items: results, total: totalItems.length });
+        // Now, for each Pokemon that learns these moves, also include their evolutions
+        // BUT only if the evolutions can also learn all the moves (considering pre-evolutions)
+        const pokemonWithEvolutions = new Set<number>();
+        for (const pkmn of directResults) {
+          pokemonWithEvolutions.add(pkmn.id);
+          // Get full evolution chain to check which Pokemon are in the same family
+          const fullChain = await storage.getEvolutionChain(pkmn.id);
+          
+          // For each Pokemon in the chain, check if they can learn all moves (considering pre-evos)
+          for (const chainPokemonId of fullChain) {
+            const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(chainPokemonId);
+            
+            // Check if this Pokemon (or its pre-evolutions) can learn all the filtered moves
+            const canLearnAll = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+              .from(pokemonMoves)
+              .where(and(
+                inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
+                inArray(pokemonMoves.moveId, moveIdList),
+                inArray(pokemonMoves.versionGroupId, maxGen ? 
+                  (await db.select({ id: versions.id }).from(versions).where(lte(versions.generationId, maxGen))).map(v => v.id) :
+                  (await db.select({ id: versions.id }).from(versions)).map(v => v.id)
+                )
+              ));
+            
+            if (canLearnAll.length === moveIdList.length) {
+              pokemonWithEvolutions.add(chainPokemonId);
+            }
+          }
+        }
+
+        // Get full Pokemon data for all Pokemon in the evolution chains
+        let allResults = await db.select({
+          id: pokemon.id,
+          name: pokemon.name,
+          speciesName: pokemon.speciesName,
+          generationId: pokemon.generationId,
+          type1: pokemon.type1,
+          type2: pokemon.type2,
+          imageUrl: pokemon.imageUrl,
+          cryUrl: pokemon.cryUrl,
+          hp: pokemon.hp,
+          attack: pokemon.attack,
+          defense: pokemon.defense,
+          specialAttack: pokemon.specialAttack,
+          specialDefense: pokemon.specialDefense,
+          speed: pokemon.speed
+        })
+        .from(pokemon)
+        .where(and(
+          inArray(pokemon.id, Array.from(pokemonWithEvolutions)),
+          maxGen ? lte(pokemon.generationId, maxGen) : undefined,
+          search ? sql`lower(${pokemon.name}) LIKE ${`%${search.toLowerCase()}%`}` : undefined
+        ));
+
+        // Apply pagination
+        const total = allResults.length;
+        const results = allResults.slice(offset, offset + limit);
+
+        return res.json({ items: results, total });
       } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error filtering by moves" });

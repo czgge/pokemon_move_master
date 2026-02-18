@@ -41,6 +41,7 @@ export interface IStorage {
   
   // Evolution Chain Helpers
   getEvolutionChain(speciesId: number): Promise<number[]>;
+  getPokemonWithPreEvolutions(speciesId: number): Promise<number[]>;
   areSameSpeciesOrCosmeticForm(pokemonId1: number, pokemonId2: number): Promise<boolean>;
   
   // Check if seeded
@@ -544,6 +545,30 @@ class DatabaseStorage implements IStorage {
     
     // Get all evolutions (going forwards in the chain)
     await getEvolutions(speciesId);
+    
+    return Array.from(chain);
+  }
+
+  async getPokemonWithPreEvolutions(speciesId: number): Promise<number[]> {
+    // Get only the Pokemon itself and its pre-evolutions (NOT future evolutions)
+    const chain = new Set<number>([speciesId]);
+    
+    // Helper to recursively get pre-evolutions (going backwards)
+    const getPreEvolutions = async (id: number) => {
+      const preEvos = await db.select()
+        .from(evolutions)
+        .where(eq(evolutions.evolvesIntoSpeciesId, id));
+      
+      for (const evo of preEvos) {
+        if (!chain.has(evo.evolvedSpeciesId)) {
+          chain.add(evo.evolvedSpeciesId);
+          await getPreEvolutions(evo.evolvedSpeciesId);
+        }
+      }
+    };
+    
+    // Get all pre-evolutions (going backwards in the chain)
+    await getPreEvolutions(speciesId);
     
     return Array.from(chain);
   }
