@@ -1419,11 +1419,11 @@ async function seedDatabase(force: boolean = false) {
   // Seed evolutions
   console.log("Starting evolution seeding...");
   try {
-    const evolutionsData = await parseCsv('attached_assets/evolutions_1771232352571.csv');
-    console.log(`Loaded ${evolutionsData.length} evolution rows from CSV`);
-    console.log("Evolution CSV sample (first 3 rows):", JSON.stringify(evolutionsData.slice(0, 3), null, 2));
+    // Use ndex_evolution_trees.csv which maps ndex_id to evolution_tree_id
+    const ndexEvolutionData = await parseCsv('attached_assets/ndex_evolution_trees.csv');
+    console.log(`Loaded ${ndexEvolutionData.length} ndex evolution mappings from CSV`);
     
-    // Get all Pokemon from database with their ndex_id and speciesName for proper mapping
+    // Get all Pokemon from database
     const allPokemon = await db.select({
       id: pokemon.id,
       name: pokemon.name,
@@ -1432,109 +1432,78 @@ async function seedDatabase(force: boolean = false) {
     }).from(pokemon);
     
     console.log(`Total Pokemon in database: ${allPokemon.length}`);
-    console.log(`Sample Pokemon (first 10):`, allPokemon.slice(0, 10).map(p => `ID:${p.id} Name:${p.name} Ndex:${p.ndexId} Species:${p.speciesName}`));
     
-    // Read pokemon_forms CSV to get the mapping from form_id to ndex_id + identifier
-    const pokemonFormsData = await parseCsv('attached_assets/pokemon_forms_1771232352573.csv');
-    
-    // Create lookup: pokemon_form_id -> { ndex_id, identifier }
-    const formIdToInfo = new Map<number, { ndexId: number, identifier: string }>();
-    pokemonFormsData.forEach((row: any) => {
-      formIdToInfo.set(parseInt(row.id), {
-        ndexId: parseInt(row.ndex_id),
-        identifier: row.identifier
-      });
-    });
-    
-    // Now create the mapping: pokemon_form_id -> database ID
-    const pokemonIdMap = new Map<number, number>();
-    formIdToInfo.forEach((info, formId) => {
-      // Find Pokemon in database with matching ndex_id and speciesName
-      const match = allPokemon.find(p => 
-        p.ndexId === info.ndexId && 
-        p.speciesName === info.identifier
-      );
-      
-      if (match) {
-        pokemonIdMap.set(formId, match.id);
-      }
-    });
-    
-    console.log(`Created Pokemon ID map with ${pokemonIdMap.size} entries`);
-    
-    // Group by evolution tree and grid_row to handle branching evolutions (like Eevee)
-    const evolutionTrees = new Map<string, Map<string, any[]>>();
-    evolutionsData.forEach((row: any) => {
-      const treeId = row.evolution_tree_id;
-      const rowId = row.grid_row || '1';
+    // Group Pokemon by evolution tree
+    const evolutionTrees = new Map<number, number[]>();
+    ndexEvolutionData.forEach((row: any) => {
+      const ndexId = parseInt(row.ndex_id);
+      const treeId = parseInt(row.evolution_tree_id);
       
       if (!evolutionTrees.has(treeId)) {
-        evolutionTrees.set(treeId, new Map());
+        evolutionTrees.set(treeId, []);
       }
-      const tree = evolutionTrees.get(treeId)!;
-      
-      if (!tree.has(rowId)) {
-        tree.set(rowId, []);
-      }
-      tree.get(rowId)!.push(row);
+      evolutionTrees.get(treeId)!.push(ndexId);
     });
     
     console.log(`Grouped into ${evolutionTrees.size} evolution trees`);
     
-    // Build evolution relationships from trees
+    // Build evolution relationships
     const mappedEvolutions: any[] = [];
-    evolutionTrees.forEach((tree, treeId) => {
-      // Process each row (evolution branch) separately
-      tree.forEach((branch, rowId) => {
-        // Sort by grid_column to get evolution order within this branch
-        branch.sort((a, b) => parseInt(a.grid_column) - parseInt(b.grid_column));
+    
+    evolutionTrees.forEach((ndexIds, treeId) => {
+      // Sort by ndex_id (lower number = earlier evolution stage)
+      ndexIds.sort((a, b) => a - b);
+      
+      // Create evolution chain: each Pokemon evolves into the next one
+      for (let i = 0; i < ndexIds.length - 1; i++) {
+        const currentNdex = ndexIds[i];
+        const nextNdex = ndexIds[i + 1];
         
-        // Create evolution links: each Pokemon evolves into the next one in the same row
-        for (let i = 0; i < branch.length - 1; i++) {
-          const current = branch[i];
-          const next = branch[i + 1];
+        // Find all Pokemon forms with these ndex IDs (including regional forms)
+        const currentForms = allPokemon.filter(p => p.ndexId === currentNdex);
+        const nextForms = allPokemon.filter(p => p.ndexId === nextNdex);
+        
+        // Match default forms (or first available form)
+        for (const currentForm of currentForms) {
+          // Try to find matching evolution form (same regional variant)
+          let nextForm = nextForms.find(nf => {
+            // Match regional variants
+            if (currentForm.speciesName.includes('alolan')) return nf.speciesName.includes('alolan');
+            if (currentForm.speciesName.includes('galarian')) return nf.speciesName.includes('galarian');
+            if (currentForm.speciesName.includes('hisuian')) return nf.speciesName.includes('hisuian');
+            if (currentForm.speciesName.includes('paldean')) return nf.speciesName.includes('paldean');
+            // Default form
+            return nf.speciesName.includes('default') || !nf.speciesName.includes('-');
+          });
           
-          const currentCol = parseInt(current.grid_column);
-          const nextCol = parseInt(next.grid_column);
+          // If no match found, use first form
+          if (!nextForm && nextForms.length > 0) {
+            nextForm = nextForms[0];
+          }
           
-          // Only link if next column is exactly 1 more (direct evolution)
-          if (nextCol === currentCol + 1) {
-            // pokemon_form_id in evolution CSV corresponds to "id" in pokemon_forms CSV
-            const currentFormId = parseInt(current.pokemon_form_id);
-            const nextFormId = parseInt(next.pokemon_form_id);
+          if (nextForm) {
+            mappedEvolutions.push({
+              evolvedSpeciesId: currentForm.id,
+              evolvesIntoSpeciesId: nextForm.id,
+              evolutionTriggerId: null,
+              minLevel: null
+            });
             
-            const currentId = pokemonIdMap.get(currentFormId);
-            const nextId = pokemonIdMap.get(nextFormId);
-            
-            if (currentId && nextId) {
-              const evo = {
-                evolvedSpeciesId: currentId,
-                evolvesIntoSpeciesId: nextId,
-                evolutionTriggerId: null,
-                minLevel: null
-              };
-              mappedEvolutions.push(evo);
-              
-              // Log first few evolutions for debugging
-              if (mappedEvolutions.length <= 5) {
-                console.log(`Evolution ${mappedEvolutions.length}: Tree ${treeId}, Row ${rowId}, form_id ${currentFormId} (db_id ${currentId}) -> form_id ${nextFormId} (db_id ${nextId})`);
-              }
-            } else {
-              if (!currentId) console.warn(`Could not find Pokemon with form_id ${currentFormId}`);
-              if (!nextId) console.warn(`Could not find Pokemon with form_id ${nextFormId}`);
+            // Log first few for debugging
+            if (mappedEvolutions.length <= 10) {
+              console.log(`Evolution ${mappedEvolutions.length}: ${currentForm.name} (ID:${currentForm.id}, Ndex:${currentNdex}) -> ${nextForm.name} (ID:${nextForm.id}, Ndex:${nextNdex})`);
             }
           }
         }
-      });
+      }
     });
     
     console.log(`Mapped ${mappedEvolutions.length} total evolutions`);
     if (mappedEvolutions.length > 0) {
-      console.log("Sample evolutions:", JSON.stringify(mappedEvolutions.slice(0, 3), null, 2));
       await storage.seedEvolutions(mappedEvolutions);
       console.log("✓ Seeded evolutions successfully");
     } else {
-      console.log("⚠ WARNING: No evolutions were mapped! Check CSV parsing logic.");
+      console.log("⚠ WARNING: No evolutions were mapped!");
     }
   } catch (error) {
     console.error("✗ Error during evolution seeding:", error);
