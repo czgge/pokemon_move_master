@@ -18,7 +18,8 @@ export const versions = pgTable("versions", {
 });
 
 export const pokemon = pgTable("pokemon", {
-  id: integer("id").primaryKey(), // Using pokemon_form_id from CSV
+  id: integer("id").primaryKey(), // Using id from CSV (internal database ID)
+  ndexId: integer("ndex_id"), // National Pokedex number
   name: text("name").notNull(),   // identifier or form_name
   speciesName: text("species_name").notNull(), // from identifier
   generationId: integer("generation_id"), // Derived from version_group or manual mapping
@@ -37,6 +38,7 @@ export const pokemon = pgTable("pokemon", {
   // Index for species name lookups (used in uniqueness checks)
   speciesNameIdx: index("pokemon_species_name_idx").on(table.speciesName),
   generationIdIdx: index("pokemon_generation_id_idx").on(table.generationId),
+  ndexIdIdx: index("pokemon_ndex_id_idx").on(table.ndexId),
 }));
 
 export const moves = pgTable("moves", {

@@ -22,6 +22,7 @@ export const api = {
       path: '/api/game/start' as const,
       input: z.object({
         maxGen: z.number().min(1).max(9),
+        seenMovesets: z.array(z.string()).optional(), // Array of move combinations already seen
       }),
       responses: {
         200: z.object({
