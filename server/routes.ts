@@ -127,6 +127,17 @@ export async function registerRoutes(
       // Calculate missing moves FIRST (before any evolution checks)
       if (!isCorrect) {
         console.log(`[Answer] Calculating missing moves for Pokemon ${guessedPokemonId}`);
+        
+        // Get Pokemon names for logging
+        const [guessedPokemon] = await db.select({ name: pokemon.name })
+          .from(pokemon)
+          .where(eq(pokemon.id, guessedPokemonId));
+        const [correctPokemon] = await db.select({ name: pokemon.name })
+          .from(pokemon)
+          .where(eq(pokemon.id, roundData.correctPokemonId));
+        
+        console.log(`[Answer] Guessed: ${guessedPokemon?.name} (ID: ${guessedPokemonId}), Correct: ${correctPokemon?.name} (ID: ${roundData.correctPokemonId})`);
+        
         const puzzleMoveNames = roundData.moves;
         console.log(`[Answer] Puzzle moves:`, puzzleMoveNames);
         
@@ -147,7 +158,15 @@ export async function registerRoutes(
         
         // Get the evolution chain for the guessed Pokemon to include pre-evolution moves
         const guessedEvolutionChain = await storage.getEvolutionChain(guessedPokemonId);
-        console.log(`[Answer] Guessed Pokemon evolution chain:`, guessedEvolutionChain);
+        console.log(`[Answer] Guessed Pokemon evolution chain IDs:`, guessedEvolutionChain);
+        
+        // Get names of Pokemon in evolution chain for debugging
+        if (guessedEvolutionChain.length > 0) {
+          const chainPokemon = await db.select({ id: pokemon.id, name: pokemon.name })
+            .from(pokemon)
+            .where(inArray(pokemon.id, guessedEvolutionChain));
+          console.log(`[Answer] Evolution chain Pokemon:`, chainPokemon);
+        }
         
         // Get moves the guessed Pokemon AND its pre-evolutions can learn
         const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
@@ -158,7 +177,7 @@ export async function registerRoutes(
           ));
         
         const guessedMoveIds = guessedPokemonMoves.map(m => m.moveId);
-        console.log(`[Answer] Guessed Pokemon (including pre-evos) can learn ${guessedMoveIds.length} moves`);
+        console.log(`[Answer] Guessed Pokemon (including pre-evos) can learn ${guessedMoveIds.length} total moves`);
         
         // Find which puzzle moves the guessed Pokemon CANNOT learn
         missingMoves = puzzleMoves
