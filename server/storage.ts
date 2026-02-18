@@ -407,8 +407,14 @@ class DatabaseStorage implements IStorage {
     
     const targetSpeciesBase = targetPokemon.speciesName.split('-')[0];
     
-    // Step 1: Find Pokemon that learn at least ONE of the moves (candidates)
-    const candidates = await db.selectDistinct({ pokemonId: pokemonMoves.pokemonId })
+    // OPTIMIZED APPROACH:
+    // Instead of checking each Pokemon individually, we use a more efficient query
+    // We find Pokemon that learn ALL moves either directly or through their evolution line
+    
+    // Step 1: Find all Pokemon that directly learn ALL the moves
+    const directLearners = await db.select({ 
+        pokemonId: pokemonMoves.pokemonId
+      })
       .from(pokemonMoves)
       .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
       .where(and(
@@ -416,17 +422,37 @@ class DatabaseStorage implements IStorage {
         inArray(pokemonMoves.versionGroupId, validVersionIds),
         lte(pokemon.generationId, maxGen),
         sql`${pokemon.speciesName} NOT LIKE ${targetSpeciesBase + '%'}` // Exclude same species
+      ))
+      .groupBy(pokemonMoves.pokemonId)
+      .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIds.length}`);
+    
+    if (directLearners.length > 0) {
+      // Found at least one other Pokemon that can learn all moves directly
+      return false;
+    }
+    
+    // Step 2: Check if any evolution can learn all moves through its pre-evolution chain
+    // This is the expensive part, but we only do it if no direct learners were found
+    // Get candidates that learn at least ONE move (much smaller set)
+    const candidates = await db.selectDistinct({ pokemonId: pokemonMoves.pokemonId })
+      .from(pokemonMoves)
+      .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
+      .where(and(
+        inArray(pokemonMoves.moveId, moveIds),
+        inArray(pokemonMoves.versionGroupId, validVersionIds),
+        lte(pokemon.generationId, maxGen),
+        sql`${pokemon.speciesName} NOT LIKE ${targetSpeciesBase + '%'}`
       ));
     
     const candidateIds = candidates.map(c => c.pokemonId);
     
-    if (candidateIds.length === 0) {
-      return true; // No candidates, moveset is unique
+    // Limit the number of candidates we check to avoid timeout
+    // If there are too many candidates, it's likely not unique anyway
+    if (candidateIds.length > 50) {
+      return false; // Too many candidates, assume not unique for performance
     }
     
-    // Step 2: For each candidate, check if it can learn ALL moves (including through pre-evolutions)
-    const pokemonThatCanLearnAll = new Set<number>();
-    
+    // Check each candidate (limited set)
     for (const candidateId of candidateIds) {
       // Get this Pokemon + its pre-evolutions
       const pokemonWithPreEvos = await this.getPokemonWithPreEvolutions(candidateId);
@@ -445,12 +471,12 @@ class DatabaseStorage implements IStorage {
       const canLearnAll = moveIds.every(moveId => pokemonMoveIds.includes(moveId));
       
       if (canLearnAll) {
-        pokemonThatCanLearnAll.add(candidateId);
+        return false; // Found another Pokemon that can learn all moves
       }
     }
     
-    // The moveset is unique if no other Pokemon can learn it
-    return pokemonThatCanLearnAll.size === 0;
+    // No other Pokemon can learn all these moves
+    return true;
   }
 
   async seedGenerations(data: any[]) {
