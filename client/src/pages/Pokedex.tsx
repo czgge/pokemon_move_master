@@ -422,6 +422,7 @@ export default function Pokedex() {
                   </div>
                   
                   {/* Base Stats - Compact on mobile, full on desktop */}
+                  {/* Base Stats - Compact on mobile, full on desktop */}
                   {selectedPokemon.hp && (
                     <div className="w-full bg-muted/20 p-3 lg:p-4 rounded-lg mb-3 lg:mb-4 border-2 border-border">
                       <p className="text-xs font-bold uppercase text-center mb-2 lg:mb-4 text-muted-foreground">Base Stats</p>
@@ -443,8 +444,6 @@ export default function Pokedex() {
                       </div>
                       {/* Desktop: Full bars layout */}
                       <div className="hidden lg:block space-y-3">
-                      <p className="text-xs font-bold uppercase text-center mb-4 text-muted-foreground">Base Stats</p>
-                      <div className="space-y-3">
                         {[
                           { label: 'HP', value: selectedPokemon.hp, color: 'bg-green-500' },
                           { label: 'ATK', value: selectedPokemon.attack, color: 'bg-red-500' },
