@@ -536,7 +536,7 @@ function GameOverScreen({ score, maxGen, lastPokemon, onRestart }: { score: numb
                     onChange={(e) => setName(e.target.value)}
                     placeholder="ENTER YOUR NAME"
                     className="w-full p-3 text-center font-retro text-lg uppercase bg-white border-2 border-foreground rounded focus:outline-none focus:border-primary"
-                    maxLength={10}
+                    maxLength={20}
                   />
                   <RetroButton 
                     onClick={handleSubmit} 
