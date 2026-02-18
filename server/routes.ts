@@ -414,15 +414,19 @@ export async function registerRoutes(
         // We look in evolutions table where evolvedSpeciesId = 25, and get evolvesIntoSpeciesId
         const allPokemonIds = new Set<number>(directLearnerIds);
         
+        console.log(`[Pokedex] Direct learner IDs: ${JSON.stringify(directLearnerIds)}`);
+        
         for (const learnerId of directLearnerIds) {
           // Find Pokemon that evolve FROM this learner
           const evos = await db.select()
             .from(evolutions)
             .where(eq(evolutions.evolvedSpeciesId, learnerId));
           
+          console.log(`[Pokedex] Checking evolutions for Pokemon ID ${learnerId}, found ${evos.length} evolutions`);
+          
           for (const evo of evos) {
             allPokemonIds.add(evo.evolvesIntoSpeciesId);
-            console.log(`[Pokedex] Added evolution: ${evo.evolvedSpeciesId} -> ${evo.evolvesIntoSpeciesId}`);
+            console.log(`[Pokedex] Added evolution: Pokemon ${evo.evolvedSpeciesId} -> Pokemon ${evo.evolvesIntoSpeciesId}`);
           }
         }
 
@@ -535,6 +539,11 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const gen = parseInt(req.query.gen as string) || 9;
       console.log(`Fetching moves for Pokemon ID: ${id}, Gen: ${gen}`);
+      
+      // Debug: check pre-evolutions
+      const preEvos = await storage.getPokemonWithPreEvolutions(id);
+      console.log(`[DEBUG] Pokemon ${id} pre-evolution chain:`, preEvos);
+      
       const moves = await storage.getMovesForPokemon(id, gen);
       console.log(`Found ${moves.length} moves`);
       res.json(moves);
@@ -1463,6 +1472,12 @@ async function seedDatabase(force: boolean = false) {
         const currentForms = allPokemon.filter(p => p.ndexId === currentNdex);
         const nextForms = allPokemon.filter(p => p.ndexId === nextNdex);
         
+        // Prioritize default forms
+        const getDefaultOrFirst = (forms: typeof allPokemon) => {
+          const defaultForm = forms.find(f => f.speciesName.includes('default'));
+          return defaultForm || forms[0];
+        };
+        
         // Match default forms (or first available form)
         for (const currentForm of currentForms) {
           // Try to find matching evolution form (same regional variant)
@@ -1476,22 +1491,32 @@ async function seedDatabase(force: boolean = false) {
             return nf.speciesName.includes('default') || !nf.speciesName.includes('-');
           });
           
-          // If no match found, use first form
+          // If no match found, use default or first form
           if (!nextForm && nextForms.length > 0) {
-            nextForm = nextForms[0];
+            nextForm = getDefaultOrFirst(nextForms);
           }
           
           if (nextForm) {
-            mappedEvolutions.push({
-              evolvedSpeciesId: currentForm.id,
-              evolvesIntoSpeciesId: nextForm.id,
-              evolutionTriggerId: null,
-              minLevel: null
-            });
+            // Skip if this is not a default form and we already have a default evolution
+            const isDefaultCurrent = currentForm.speciesName.includes('default');
+            const isDefaultNext = nextForm.speciesName.includes('default');
             
-            // Log first few for debugging
-            if (mappedEvolutions.length <= 10) {
-              console.log(`Evolution ${mappedEvolutions.length}: ${currentForm.name} (ID:${currentForm.id}, Ndex:${currentNdex}) -> ${nextForm.name} (ID:${nextForm.id}, Ndex:${nextNdex})`);
+            // Only create evolution if both are default forms, or if no default forms exist
+            if ((isDefaultCurrent && isDefaultNext) || 
+                (!currentForms.some(f => f.speciesName.includes('default')) && 
+                 !nextForms.some(f => f.speciesName.includes('default')))) {
+              
+              mappedEvolutions.push({
+                evolvedSpeciesId: currentForm.id,
+                evolvesIntoSpeciesId: nextForm.id,
+                evolutionTriggerId: null,
+                minLevel: null
+              });
+              
+              // Log first few for debugging
+              if (mappedEvolutions.length <= 10) {
+                console.log(`Evolution ${mappedEvolutions.length}: ${currentForm.name} (ID:${currentForm.id}, Ndex:${currentNdex}) -> ${nextForm.name} (ID:${nextForm.id}, Ndex:${nextNdex})`);
+              }
             }
           }
         }
