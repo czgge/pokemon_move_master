@@ -102,7 +102,10 @@ export class DatabaseStorage implements IStorage {
     const [target] = await db.select().from(pokemon).where(eq(pokemon.id, pokemonId));
     if (!target) return [];
 
-    const nameBase = target.name.split(' (')[0].split('-')[0];
+    // Extract base name more robustly. Handle "Arceus (Fairy)", "Arceus-default", etc.
+    // The name in DB for base forms is often "arceus" or "arceus-default" or "Arceus (Normal)"
+    // Looking at the seeder: name: r.form_name ? `${r.identifier} (${r.form_name})` : r.identifier
+    const nameBase = target.speciesName || target.name.split(' (')[0].split('-')[0];
 
     const validVersions = await db.select({ id: versions.id })
       .from(versions)
@@ -126,7 +129,7 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
       .where(and(
         or(
-          eq(pokemonMoves.pokemonId, pokemonId),
+          eq(pokemon.speciesName, nameBase),
           sql`${pokemon.name} LIKE ${nameBase + '%'}`
         ),
         inArray(pokemonMoves.versionGroupId, validVersionIds)

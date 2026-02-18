@@ -172,7 +172,8 @@ export async function registerRoutes(
     if (moveFilters.length > 0) {
       // Custom logic for filtering by moves
       try {
-        const moveIds = await db.select({ id: moves.id }).from(moves).where(inArray(moves.name, moveFilters));
+        // Use ILIKE for case-insensitive move name matching if needed, but assuming exact names from autocomplete
+        const moveIds = await db.select({ id: moves.id }).from(moves).where(inArray(sql`lower(${moves.name})`, moveFilters.map(m => m.toLowerCase().replace(/ /g, '-'))));
         const moveIdList = moveIds.map(m => m.id);
         
         if (moveIdList.length === 0) return res.json({ items: [], total: 0 });
@@ -189,24 +190,31 @@ export async function registerRoutes(
         })
         .from(pokemonMoves)
         .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
+        .innerJoin(versions, eq(pokemonMoves.versionGroupId, versions.id))
         .where(and(
           inArray(pokemonMoves.moveId, moveIdList),
-          maxGen ? lte(pokemon.generationId, maxGen) : undefined
+          maxGen ? lte(versions.generationId, maxGen) : undefined
         ))
         .groupBy(pokemon.id)
         .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`)
         .limit(limit)
         .offset(offset);
 
-        const totalResult = await db.select({ count: sql<number>`count(distinct ${pokemon.id})` })
-          .from(pokemonMoves)
-          .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
-          .where(and(
-            inArray(pokemonMoves.moveId, moveIdList),
-            maxGen ? lte(pokemon.generationId, maxGen) : undefined
-          ));
+        // Subquery for total count is tricky with having, let's use a simpler approach or wrap it
+        const totalItems = await db.select({ 
+          id: pokemon.id 
+        })
+        .from(pokemonMoves)
+        .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
+        .innerJoin(versions, eq(pokemonMoves.versionGroupId, versions.id))
+        .where(and(
+          inArray(pokemonMoves.moveId, moveIdList),
+          maxGen ? lte(versions.generationId, maxGen) : undefined
+        ))
+        .groupBy(pokemon.id)
+        .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`);
 
-        return res.json({ items: results, total: Number(totalResult[0]?.count || 0) });
+        return res.json({ items: results, total: totalItems.length });
       } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error filtering by moves" });
@@ -215,6 +223,25 @@ export async function registerRoutes(
 
     const result = await storage.getAllPokemon(maxGen, search, limit, offset);
     res.json(result);
+  });
+
+  app.get("/api/moves/search", async (req, res) => {
+    try {
+      const query = req.query.query as string;
+      const gen = parseInt(req.query.gen as string) || 9;
+      if (!query) return res.json([]);
+
+      const results = await db.select()
+        .from(moves)
+        .where(and(
+          sql`lower(${moves.name}) LIKE ${`%${query.toLowerCase()}%`}`,
+          lte(moves.generationId, gen)
+        ))
+        .limit(10);
+      res.json(results);
+    } catch (err) {
+      res.status(500).json({ message: "Error searching moves" });
+    }
   });
 
   app.get(api.pokedex.search.path, async (req, res) => {
