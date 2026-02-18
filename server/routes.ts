@@ -1415,14 +1415,16 @@ async function seedDatabase(force: boolean = false) {
     console.log(`Loaded ${evolutionsData.length} evolution rows from CSV`);
     console.log("Evolution CSV sample (first 3 rows):", JSON.stringify(evolutionsData.slice(0, 3), null, 2));
     
-    // Create a map from ndex_id to id for Pokemon lookup
+    // Create a map from id (form_id) to database id for Pokemon lookup
+    // The evolution CSV uses pokemon_form_id which corresponds to the "id" column in pokemon_forms CSV
     const pokemonIdMap = new Map<number, number>();
     const allPokemon = await db.select({ id: pokemon.id, ndexId: pokemon.ndexId })
       .from(pokemon);
+    
+    // Map using the database ID directly (pokemon_form_id in evolution CSV = id in pokemon_forms CSV)
+    // Since we're using the same IDs from the CSV, the mapping is 1:1
     allPokemon.forEach(p => {
-      if (p.ndexId) {
-        pokemonIdMap.set(p.ndexId, p.id);
-      }
+      pokemonIdMap.set(p.id, p.id); // Direct mapping: form_id -> database_id
     });
     console.log(`Created Pokemon ID map with ${pokemonIdMap.size} entries`);
     
@@ -1463,12 +1465,12 @@ async function seedDatabase(force: boolean = false) {
           
           // Only link if next column is exactly 1 more (direct evolution)
           if (nextCol === currentCol + 1) {
-            // Convert pokemon_form_id (which is ndex_id) to actual database id
-            const currentNdexId = parseInt(current.pokemon_form_id);
-            const nextNdexId = parseInt(next.pokemon_form_id);
+            // pokemon_form_id in evolution CSV corresponds to "id" in pokemon_forms CSV
+            const currentFormId = parseInt(current.pokemon_form_id);
+            const nextFormId = parseInt(next.pokemon_form_id);
             
-            const currentId = pokemonIdMap.get(currentNdexId);
-            const nextId = pokemonIdMap.get(nextNdexId);
+            const currentId = pokemonIdMap.get(currentFormId);
+            const nextId = pokemonIdMap.get(nextFormId);
             
             if (currentId && nextId) {
               const evo = {
@@ -1481,11 +1483,11 @@ async function seedDatabase(force: boolean = false) {
               
               // Log first few evolutions for debugging
               if (mappedEvolutions.length <= 5) {
-                console.log(`Evolution ${mappedEvolutions.length}: Tree ${treeId}, Row ${rowId}, ndex ${currentNdexId} (id ${currentId}) -> ndex ${nextNdexId} (id ${nextId})`);
+                console.log(`Evolution ${mappedEvolutions.length}: Tree ${treeId}, Row ${rowId}, form_id ${currentFormId} (db_id ${currentId}) -> form_id ${nextFormId} (db_id ${nextId})`);
               }
             } else {
-              if (!currentId) console.warn(`Could not find Pokemon with ndex_id ${currentNdexId}`);
-              if (!nextId) console.warn(`Could not find Pokemon with ndex_id ${nextNdexId}`);
+              if (!currentId) console.warn(`Could not find Pokemon with form_id ${currentFormId}`);
+              if (!nextId) console.warn(`Could not find Pokemon with form_id ${nextFormId}`);
             }
           }
         }
