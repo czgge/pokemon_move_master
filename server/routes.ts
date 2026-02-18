@@ -124,69 +124,6 @@ export async function registerRoutes(
       console.log(`[Answer] Checking guess: ${guessedPokemonId} vs correct: ${roundData.correctPokemonId}`);
       console.log(`[Answer] Is exact match: ${isCorrect}`);
       
-      // Calculate missing moves FIRST (before any evolution checks)
-      if (!isCorrect) {
-        console.log(`[Answer] Calculating missing moves for Pokemon ${guessedPokemonId}`);
-        
-        // Get Pokemon names for logging
-        const [guessedPokemon] = await db.select({ name: pokemon.name })
-          .from(pokemon)
-          .where(eq(pokemon.id, guessedPokemonId));
-        const [correctPokemon] = await db.select({ name: pokemon.name })
-          .from(pokemon)
-          .where(eq(pokemon.id, roundData.correctPokemonId));
-        
-        console.log(`[Answer] Guessed: ${guessedPokemon?.name} (ID: ${guessedPokemonId}), Correct: ${correctPokemon?.name} (ID: ${roundData.correctPokemonId})`);
-        
-        const puzzleMoveNames = roundData.moves;
-        console.log(`[Answer] Puzzle moves:`, puzzleMoveNames);
-        
-        const puzzleMoves = await db.select({ id: moves.id, name: moves.name })
-          .from(moves)
-          .where(inArray(moves.name, puzzleMoveNames));
-        
-        console.log(`[Answer] Found puzzle moves in DB:`, puzzleMoves);
-        const puzzleMoveIds = puzzleMoves.map(m => m.id);
-        
-        // Get valid versions for the generation
-        const validVersions = await db.select({ id: versions.id })
-          .from(versions)
-          .where(lte(versions.generationId, roundData.gen));
-        const validVersionIds = validVersions.map(v => v.id);
-        
-        console.log(`[Answer] Valid version IDs for gen ${roundData.gen}:`, validVersionIds.length);
-        
-        // Get the evolution chain for the guessed Pokemon to include pre-evolution moves
-        const guessedEvolutionChain = await storage.getEvolutionChain(guessedPokemonId);
-        console.log(`[Answer] Guessed Pokemon evolution chain IDs:`, guessedEvolutionChain);
-        
-        // Get names of Pokemon in evolution chain for debugging
-        if (guessedEvolutionChain.length > 0) {
-          const chainPokemon = await db.select({ id: pokemon.id, name: pokemon.name })
-            .from(pokemon)
-            .where(inArray(pokemon.id, guessedEvolutionChain));
-          console.log(`[Answer] Evolution chain Pokemon:`, chainPokemon);
-        }
-        
-        // Get moves the guessed Pokemon AND its pre-evolutions can learn
-        const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
-          .from(pokemonMoves)
-          .where(and(
-            inArray(pokemonMoves.pokemonId, guessedEvolutionChain),
-            inArray(pokemonMoves.versionGroupId, validVersionIds)
-          ));
-        
-        const guessedMoveIds = guessedPokemonMoves.map(m => m.moveId);
-        console.log(`[Answer] Guessed Pokemon (including pre-evos) can learn ${guessedMoveIds.length} total moves`);
-        
-        // Find which puzzle moves the guessed Pokemon CANNOT learn
-        missingMoves = puzzleMoves
-          .filter(move => !guessedMoveIds.includes(move.id))
-          .map(move => move.name);
-        
-        console.log(`[Answer] Missing moves:`, missingMoves);
-      }
-      
       // If not exact match, check if they're the same species (cosmetic forms)
       if (!isCorrect) {
         const sameSpecies = await storage.areSameSpeciesOrCosmeticForm(roundData.correctPokemonId, guessedPokemonId);
@@ -212,7 +149,65 @@ export async function registerRoutes(
         
         if (sameFamily) {
           // They're in the same evolution family
-          // Check if the guessed Pokemon can learn ALL the puzzle moves (already calculated above)
+          // Now calculate missing moves considering the guessed Pokemon AND its pre-evolutions
+          console.log(`[Answer] Calculating missing moves for Pokemon ${guessedPokemonId} (including pre-evos)`);
+          
+          // Get Pokemon names for logging
+          const [guessedPokemon] = await db.select({ name: pokemon.name })
+            .from(pokemon)
+            .where(eq(pokemon.id, guessedPokemonId));
+          const [correctPokemon] = await db.select({ name: pokemon.name })
+            .from(pokemon)
+            .where(eq(pokemon.id, roundData.correctPokemonId));
+          
+          console.log(`[Answer] Guessed: ${guessedPokemon?.name} (ID: ${guessedPokemonId}), Correct: ${correctPokemon?.name} (ID: ${roundData.correctPokemonId})`);
+          
+          const puzzleMoveNames = roundData.moves;
+          console.log(`[Answer] Puzzle moves:`, puzzleMoveNames);
+          
+          const puzzleMoves = await db.select({ id: moves.id, name: moves.name })
+            .from(moves)
+            .where(inArray(moves.name, puzzleMoveNames));
+          
+          console.log(`[Answer] Found puzzle moves in DB:`, puzzleMoves);
+          const puzzleMoveIds = puzzleMoves.map(m => m.id);
+          
+          // Get valid versions for the generation
+          const validVersions = await db.select({ id: versions.id })
+            .from(versions)
+            .where(lte(versions.generationId, roundData.gen));
+          const validVersionIds = validVersions.map(v => v.id);
+          
+          console.log(`[Answer] Valid version IDs for gen ${roundData.gen}:`, validVersionIds.length);
+          console.log(`[Answer] Guessed Pokemon evolution chain IDs:`, guessedChain);
+          
+          // Get names of Pokemon in evolution chain for debugging
+          if (guessedChain.length > 0) {
+            const chainPokemon = await db.select({ id: pokemon.id, name: pokemon.name })
+              .from(pokemon)
+              .where(inArray(pokemon.id, guessedChain));
+            console.log(`[Answer] Evolution chain Pokemon:`, chainPokemon);
+          }
+          
+          // Get moves the guessed Pokemon AND its pre-evolutions can learn
+          const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+            .from(pokemonMoves)
+            .where(and(
+              inArray(pokemonMoves.pokemonId, guessedChain),
+              inArray(pokemonMoves.versionGroupId, validVersionIds)
+            ));
+          
+          const guessedMoveIds = guessedPokemonMoves.map(m => m.moveId);
+          console.log(`[Answer] Guessed Pokemon (including pre-evos) can learn ${guessedMoveIds.length} total moves`);
+          
+          // Find which puzzle moves the guessed Pokemon CANNOT learn
+          missingMoves = puzzleMoves
+            .filter(move => !guessedMoveIds.includes(move.id))
+            .map(move => move.name);
+          
+          console.log(`[Answer] Missing moves:`, missingMoves);
+          
+          // Check if the guessed Pokemon can learn ALL the puzzle moves
           const canLearnAll = missingMoves.length === 0;
           
           console.log(`[Answer] Can guessed Pokemon learn all moves? ${canLearnAll} (missing: ${missingMoves.join(', ')})`);
@@ -220,11 +215,43 @@ export async function registerRoutes(
           if (canLearnAll) {
             console.log(`[Answer] Accepting evolution as correct answer!`);
             isCorrect = true;
+            missingMoves = []; // Clear missing moves since it's correct
           } else {
             console.log(`[Answer] Rejecting evolution - cannot learn all moves`);
           }
         } else {
           console.log(`[Answer] Not in same evolution family - rejecting`);
+          
+          // Calculate missing moves for non-evolution case
+          console.log(`[Answer] Calculating missing moves for non-evolution Pokemon ${guessedPokemonId}`);
+          const puzzleMoveNames = roundData.moves;
+          
+          const puzzleMoves = await db.select({ id: moves.id, name: moves.name })
+            .from(moves)
+            .where(inArray(moves.name, puzzleMoveNames));
+          
+          const puzzleMoveIds = puzzleMoves.map(m => m.id);
+          
+          // Get valid versions for the generation
+          const validVersions = await db.select({ id: versions.id })
+            .from(versions)
+            .where(lte(versions.generationId, roundData.gen));
+          const validVersionIds = validVersions.map(v => v.id);
+          
+          // Get moves the guessed Pokemon AND its pre-evolutions can learn
+          const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+            .from(pokemonMoves)
+            .where(and(
+              inArray(pokemonMoves.pokemonId, guessedChain),
+              inArray(pokemonMoves.versionGroupId, validVersionIds)
+            ));
+          
+          const guessedMoveIds = guessedPokemonMoves.map(m => m.moveId);
+          
+          // Find which puzzle moves the guessed Pokemon CANNOT learn
+          missingMoves = puzzleMoves
+            .filter(move => !guessedMoveIds.includes(move.id))
+            .map(move => move.name);
         }
       }
 
