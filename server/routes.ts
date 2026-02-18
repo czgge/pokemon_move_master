@@ -395,37 +395,34 @@ export async function registerRoutes(
         .groupBy(pokemon.id, pokemon.name, pokemon.speciesName, pokemon.generationId, pokemon.type1, pokemon.type2, pokemon.imageUrl, pokemon.cryUrl, pokemon.hp, pokemon.attack, pokemon.defense, pokemon.specialAttack, pokemon.specialDefense, pokemon.speed)
         .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`);
 
-        // Now, for each Pokemon that learns these moves, also include their evolutions
-        // BUT only if the evolutions can also learn all the moves (considering pre-evolutions)
+        // Now, for each Pokemon that directly learns these moves, also include their evolutions
+        // Logic: If Pikachu learns Quick Attack, then Raichu should also appear
+        // (because Raichu inherits moves from Pikachu via pre-evolution)
         const pokemonWithEvolutions = new Set<number>();
+        
         for (const pkmn of directResults) {
           pokemonWithEvolutions.add(pkmn.id);
-          // Get full evolution chain to check which Pokemon are in the same family
-          const fullChain = await storage.getEvolutionChain(pkmn.id);
           
-          // For each Pokemon in the chain, check if they can learn all moves (considering pre-evos)
-          for (const chainPokemonId of fullChain) {
-            const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(chainPokemonId);
+          // Find all Pokemon that have this Pokemon as a pre-evolution
+          // (i.e., find evolutions of this Pokemon)
+          const findEvolutions = async (pokemonId: number) => {
+            const evos = await db.select()
+              .from(evolutions)
+              .where(eq(evolutions.evolvedSpeciesId, pokemonId));
             
-            // Check if this Pokemon (or its pre-evolutions) can learn all the filtered moves
-            const canLearnAll = await db.selectDistinct({ moveId: pokemonMoves.moveId })
-              .from(pokemonMoves)
-              .where(and(
-                inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
-                inArray(pokemonMoves.moveId, moveIdList),
-                inArray(pokemonMoves.versionGroupId, maxGen ? 
-                  (await db.select({ id: versions.id }).from(versions).where(lte(versions.generationId, maxGen))).map(v => v.id) :
-                  (await db.select({ id: versions.id }).from(versions)).map(v => v.id)
-                )
-              ));
-            
-            if (canLearnAll.length === moveIdList.length) {
-              pokemonWithEvolutions.add(chainPokemonId);
+            for (const evo of evos) {
+              if (!pokemonWithEvolutions.has(evo.evolvesIntoSpeciesId)) {
+                pokemonWithEvolutions.add(evo.evolvesIntoSpeciesId);
+                // Recursively find evolutions of this evolution
+                await findEvolutions(evo.evolvesIntoSpeciesId);
+              }
             }
-          }
+          };
+          
+          await findEvolutions(pkmn.id);
         }
 
-        // Get full Pokemon data for all Pokemon in the evolution chains
+        // Get full Pokemon data for all Pokemon (direct learners + their evolutions)
         let allResults = await db.select({
           id: pokemon.id,
           name: pokemon.name,
