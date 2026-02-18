@@ -475,9 +475,14 @@ export async function registerRoutes(
         const directLearnerIds = directLearners.map(p => p.pokemonId);
         console.log(`[Pokedex] Found ${directLearnerIds.length} Pokemon that directly learn all moves`);
 
+        // Get valid version IDs for this generation
+        const validVersions = await db.select({ id: versions.id })
+          .from(versions)
+          .where(maxGen ? lte(versions.generationId, maxGen) : undefined);
+        const validVersionIds = validVersions.map(v => v.id);
+
         // Now find all evolutions of these Pokemon
-        // Logic: If Pikachu (ID 25) learns Quick Attack, we need to find Raichu
-        // We look in evolutions table where evolvedSpeciesId = 25, and get evolvesIntoSpeciesId
+        // BUT: only include evolutions that can also learn all the moves (through their pre-evolutions)
         const allPokemonIds = new Set<number>(directLearnerIds);
         
         console.log(`[Pokedex] Direct learner IDs: ${JSON.stringify(directLearnerIds)}`);
@@ -491,12 +496,34 @@ export async function registerRoutes(
           console.log(`[Pokedex] Checking evolutions for Pokemon ID ${learnerId}, found ${evos.length} evolutions`);
           
           for (const evo of evos) {
-            allPokemonIds.add(evo.evolvesIntoSpeciesId);
-            console.log(`[Pokedex] Added evolution: Pokemon ${evo.evolvedSpeciesId} -> Pokemon ${evo.evolvesIntoSpeciesId}`);
+            const evolutionId = evo.evolvesIntoSpeciesId;
+            
+            // Check if this evolution can learn all the moves (through its pre-evolutions)
+            const evolutionWithPreEvos = await storage.getPokemonWithPreEvolutions(evolutionId);
+            
+            // Get moves the evolution (and its pre-evolutions) can learn
+            const evolutionMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+              .from(pokemonMoves)
+              .where(and(
+                inArray(pokemonMoves.pokemonId, evolutionWithPreEvos),
+                inArray(pokemonMoves.versionGroupId, validVersionIds)
+              ));
+            
+            const evolutionMoveIds = evolutionMoves.map(m => m.moveId);
+            
+            // Check if evolution can learn ALL the required moves
+            const canLearnAll = moveIdList.every(moveId => evolutionMoveIds.includes(moveId));
+            
+            if (canLearnAll) {
+              allPokemonIds.add(evolutionId);
+              console.log(`[Pokedex] Added evolution: Pokemon ${evo.evolvedSpeciesId} -> Pokemon ${evolutionId} (can learn all moves)`);
+            } else {
+              console.log(`[Pokedex] Skipped evolution: Pokemon ${evo.evolvedSpeciesId} -> Pokemon ${evolutionId} (cannot learn all moves)`);
+            }
           }
         }
 
-        console.log(`[Pokedex] Total Pokemon IDs (learners + evolutions): ${allPokemonIds.size}`);
+        console.log(`[Pokedex] Total Pokemon IDs (learners + valid evolutions): ${allPokemonIds.size}`);
 
         // Get full Pokemon data for all these IDs
         const finalWhereConditions = [
