@@ -145,16 +145,20 @@ export async function registerRoutes(
         
         console.log(`[Answer] Valid version IDs for gen ${roundData.gen}:`, validVersionIds.length);
         
-        // Get moves the guessed Pokemon can learn
+        // Get the evolution chain for the guessed Pokemon to include pre-evolution moves
+        const guessedEvolutionChain = await storage.getEvolutionChain(guessedPokemonId);
+        console.log(`[Answer] Guessed Pokemon evolution chain:`, guessedEvolutionChain);
+        
+        // Get moves the guessed Pokemon AND its pre-evolutions can learn
         const guessedPokemonMoves = await db.selectDistinct({ moveId: pokemonMoves.moveId })
           .from(pokemonMoves)
           .where(and(
-            eq(pokemonMoves.pokemonId, guessedPokemonId),
+            inArray(pokemonMoves.pokemonId, guessedEvolutionChain),
             inArray(pokemonMoves.versionGroupId, validVersionIds)
           ));
         
         const guessedMoveIds = guessedPokemonMoves.map(m => m.moveId);
-        console.log(`[Answer] Guessed Pokemon can learn ${guessedMoveIds.length} moves`);
+        console.log(`[Answer] Guessed Pokemon (including pre-evos) can learn ${guessedMoveIds.length} moves`);
         
         // Find which puzzle moves the guessed Pokemon CANNOT learn
         missingMoves = puzzleMoves
