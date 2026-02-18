@@ -399,6 +399,8 @@ export async function registerRoutes(
         // (because Raichu inherits moves from Pikachu via pre-evolution)
         const pokemonWithEvolutions = new Set<number>();
         
+        console.log(`[Pokedex] Found ${directResults.length} Pokemon that directly learn the moves:`, directResults.map(p => p.name));
+        
         for (const pkmn of directResults) {
           pokemonWithEvolutions.add(pkmn.id);
           
@@ -409,9 +411,12 @@ export async function registerRoutes(
               .from(evolutions)
               .where(eq(evolutions.evolvedSpeciesId, pokemonId));
             
+            console.log(`[Pokedex] Looking for evolutions of Pokemon ID ${pokemonId}, found ${evos.length}`);
+            
             for (const evo of evos) {
               if (!pokemonWithEvolutions.has(evo.evolvesIntoSpeciesId)) {
                 pokemonWithEvolutions.add(evo.evolvesIntoSpeciesId);
+                console.log(`[Pokedex] Added evolution: ${evo.evolvedSpeciesId} -> ${evo.evolvesIntoSpeciesId}`);
                 // Recursively find evolutions of this evolution
                 await findEvolutions(evo.evolvesIntoSpeciesId);
               }
@@ -420,6 +425,8 @@ export async function registerRoutes(
           
           await findEvolutions(pkmn.id);
         }
+        
+        console.log(`[Pokedex] Total Pokemon with evolutions: ${pokemonWithEvolutions.size}`, Array.from(pokemonWithEvolutions));
 
         // Get full Pokemon data for all Pokemon (direct learners + their evolutions)
         // NOW apply the name search filter
