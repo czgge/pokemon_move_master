@@ -135,16 +135,15 @@ export async function registerRoutes(
       
       // If still not correct, check evolution chain and move compatibility
       if (!isCorrect) {
-        // Get evolution chain for the correct Pokemon (includes pre-evolutions)
-        const correctChain = await storage.getEvolutionChain(roundData.correctPokemonId);
-        console.log(`[Answer] Correct Pokemon ${roundData.correctPokemonId} evolution chain:`, correctChain);
+        // Get full evolution family for both Pokemon (pre-evolutions + evolutions)
+        const correctFamily = await storage.getFullEvolutionFamily(roundData.correctPokemonId);
+        console.log(`[Answer] Correct Pokemon ${roundData.correctPokemonId} evolution family:`, correctFamily);
         
-        // Get evolution chain for the guessed Pokemon
-        const guessedChain = await storage.getEvolutionChain(guessedPokemonId);
-        console.log(`[Answer] Guessed Pokemon ${guessedPokemonId} evolution chain:`, guessedChain);
+        const guessedFamily = await storage.getFullEvolutionFamily(guessedPokemonId);
+        console.log(`[Answer] Guessed Pokemon ${guessedPokemonId} evolution family:`, guessedFamily);
         
         // Check if they're in the same evolution family
-        const sameFamily = correctChain.some(id => guessedChain.includes(id));
+        const sameFamily = correctFamily.some(id => guessedFamily.includes(id));
         console.log(`[Answer] Same evolution family? ${sameFamily}`);
         
         if (sameFamily) {

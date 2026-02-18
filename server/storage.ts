@@ -42,6 +42,7 @@ export interface IStorage {
   // Evolution Chain Helpers
   getEvolutionChain(speciesId: number): Promise<number[]>;
   getPokemonWithPreEvolutions(speciesId: number): Promise<number[]>;
+  getFullEvolutionFamily(speciesId: number): Promise<number[]>;
   areSameSpeciesOrCosmeticForm(pokemonId1: number, pokemonId2: number): Promise<boolean>;
   
   // Check if seeded
@@ -537,6 +538,61 @@ class DatabaseStorage implements IStorage {
     
     // Filter to only include default forms (or forms without '-' in species name)
     // This prevents including all cosmetic Pikachu forms when checking Raichu's moves
+    const allPokemonInChain = await db.select({
+      id: pokemon.id,
+      speciesName: pokemon.speciesName
+    })
+    .from(pokemon)
+    .where(inArray(pokemon.id, Array.from(chain)));
+    
+    // Keep only default forms or forms that don't have cosmetic variants
+    const defaultFormIds = allPokemonInChain
+      .filter(p => 
+        p.speciesName.includes('default') || 
+        !p.speciesName.match(/-(?:rock-star|belle|pop-star|phd|libre|original-cap|hoenn-cap|sinnoh-cap|unova-cap|kalos-cap|alola-cap|partner-cap|world-cap)/)
+      )
+      .map(p => p.id);
+    
+    return defaultFormIds;
+  }
+
+  async getFullEvolutionFamily(speciesId: number): Promise<number[]> {
+    // Get the complete evolution family (pre-evolutions + this Pokemon + future evolutions)
+    const chain = new Set<number>([speciesId]);
+    
+    // Helper to recursively get pre-evolutions (going backwards)
+    const getPreEvolutions = async (id: number) => {
+      const preEvos = await db.select()
+        .from(evolutions)
+        .where(eq(evolutions.evolvesIntoSpeciesId, id));
+      
+      for (const evo of preEvos) {
+        if (!chain.has(evo.evolvedSpeciesId)) {
+          chain.add(evo.evolvedSpeciesId);
+          await getPreEvolutions(evo.evolvedSpeciesId);
+        }
+      }
+    };
+    
+    // Helper to recursively get future evolutions (going forwards)
+    const getFutureEvolutions = async (id: number) => {
+      const futureEvos = await db.select()
+        .from(evolutions)
+        .where(eq(evolutions.evolvedSpeciesId, id));
+      
+      for (const evo of futureEvos) {
+        if (!chain.has(evo.evolvesIntoSpeciesId)) {
+          chain.add(evo.evolvesIntoSpeciesId);
+          await getFutureEvolutions(evo.evolvesIntoSpeciesId);
+        }
+      }
+    };
+    
+    // Get all pre-evolutions and future evolutions
+    await getPreEvolutions(speciesId);
+    await getFutureEvolutions(speciesId);
+    
+    // Filter to only include default forms
     const allPokemonInChain = await db.select({
       id: pokemon.id,
       speciesName: pokemon.speciesName
