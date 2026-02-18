@@ -364,14 +364,13 @@ export async function registerRoutes(
           console.warn("Missing moves:", moveFilters.filter((_, i) => !moveIds[i]));
         }
 
-        // Build where conditions including search
+        // Build where conditions (WITHOUT search filter - we'll apply it at the end)
         const whereConditions = [
           inArray(pokemonMoves.moveId, moveIdList),
-          maxGen ? lte(versions.generationId, maxGen) : undefined,
-          search ? sql`lower(${pokemon.name}) LIKE ${`%${search.toLowerCase()}%`}` : undefined
+          maxGen ? lte(versions.generationId, maxGen) : undefined
         ].filter(Boolean);
 
-        // First, get all Pokemon that directly learn these moves
+        // First, get all Pokemon that directly learn these moves (ignore name search for now)
         const directResults = await db.select({ 
           id: pokemon.id,
           name: pokemon.name,
@@ -423,6 +422,13 @@ export async function registerRoutes(
         }
 
         // Get full Pokemon data for all Pokemon (direct learners + their evolutions)
+        // NOW apply the name search filter
+        const finalWhereConditions = [
+          inArray(pokemon.id, Array.from(pokemonWithEvolutions)),
+          maxGen ? lte(pokemon.generationId, maxGen) : undefined,
+          search ? sql`lower(${pokemon.name}) LIKE ${`%${search.toLowerCase()}%`}` : undefined
+        ].filter(Boolean);
+        
         let allResults = await db.select({
           id: pokemon.id,
           name: pokemon.name,
@@ -440,11 +446,7 @@ export async function registerRoutes(
           speed: pokemon.speed
         })
         .from(pokemon)
-        .where(and(
-          inArray(pokemon.id, Array.from(pokemonWithEvolutions)),
-          maxGen ? lte(pokemon.generationId, maxGen) : undefined,
-          search ? sql`lower(${pokemon.name}) LIKE ${`%${search.toLowerCase()}%`}` : undefined
-        ));
+        .where(and(...finalWhereConditions));
 
         // Apply pagination
         const total = allResults.length;
