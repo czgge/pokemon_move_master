@@ -454,8 +454,8 @@ export async function registerRoutes(
 
         // NEW APPROACH: 
         // 1. Find all Pokemon that directly learn these moves
-        // 2. For each of those Pokemon, find their evolutions
-        // 3. Include both the direct learners AND their evolutions in results
+        // 2. Find all Pokemon that can learn these moves through pre-evolutions
+        // 3. For Pokemon that directly learn the moves, add their evolutions
         
         const whereConditions = [
           inArray(pokemonMoves.moveId, moveIdList),
@@ -475,10 +475,55 @@ export async function registerRoutes(
         const directLearnerIds = directLearners.map(p => p.pokemonId);
         console.log(`[Pokedex] Found ${directLearnerIds.length} Pokemon that directly learn all moves`);
 
-        // Now find all evolutions of these Pokemon
-        // Logic: If Pikachu learns Quick Attack, we need to find Raichu
+        // Get valid version IDs for checking pre-evolutions
+        const validVersions = await db.select({ id: versions.id })
+          .from(versions)
+          .where(maxGen ? lte(versions.generationId, maxGen) : undefined);
+        const validVersionIds = validVersions.map(v => v.id);
+
+        // Find Pokemon that can learn all moves through pre-evolutions
+        // Get candidates that learn at least ONE of the moves
+        const candidates = await db.selectDistinct({ pokemonId: pokemonMoves.pokemonId })
+          .from(pokemonMoves)
+          .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
+          .where(and(
+            inArray(pokemonMoves.moveId, moveIdList),
+            inArray(pokemonMoves.versionGroupId, validVersionIds),
+            lte(pokemon.generationId, maxGen)
+          ));
+        
+        const candidateIds = candidates.map(c => c.pokemonId);
+        console.log(`[Pokedex] Found ${candidateIds.length} candidate Pokemon that learn at least one move`);
+        
         const allPokemonIds = new Set<number>(directLearnerIds);
         
+        // Check each candidate to see if it can learn ALL moves (through pre-evolutions)
+        for (const candidateId of candidateIds) {
+          if (allPokemonIds.has(candidateId)) continue; // Already added as direct learner
+          
+          // Get this Pokemon + its pre-evolutions
+          const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(candidateId);
+          
+          // Get moves this Pokemon (and its pre-evolutions) can learn
+          const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+            .from(pokemonMoves)
+            .where(and(
+              inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
+              inArray(pokemonMoves.versionGroupId, validVersionIds)
+            ));
+          
+          const pokemonMoveIds = pokemonMovesList.map(m => m.moveId);
+          
+          // Check if this Pokemon can learn ALL the required moves
+          const canLearnAll = moveIdList.every(moveId => pokemonMoveIds.includes(moveId));
+          
+          if (canLearnAll) {
+            allPokemonIds.add(candidateId);
+            console.log(`[Pokedex] Added Pokemon ${candidateId} (can learn all moves through pre-evolutions)`);
+          }
+        }
+
+        // Now add evolutions of direct learners
         console.log(`[Pokedex] Direct learner IDs: ${JSON.stringify(directLearnerIds)}`);
         
         for (const learnerId of directLearnerIds) {
@@ -495,7 +540,7 @@ export async function registerRoutes(
           }
         }
 
-        console.log(`[Pokedex] Total Pokemon IDs (learners + evolutions): ${allPokemonIds.size}`);
+        console.log(`[Pokedex] Total Pokemon IDs (all methods): ${allPokemonIds.size}`);
 
         // Get full Pokemon data for all these IDs
         const finalWhereConditions = [
