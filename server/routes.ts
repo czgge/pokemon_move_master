@@ -8,7 +8,7 @@ import fs from "fs";
 import path from "path";
 import csv from "csv-parser";
 import { db } from "./db";
-import { pokemon, moves, pokemonMoves, versions } from "../shared/schema";
+import { pokemon, moves, pokemonMoves, versions, evolutions } from "../shared/schema";
 import { eq, lte, sql, and, inArray } from "drizzle-orm";
 
 function createRoundToken(data: any) {
