@@ -133,22 +133,27 @@ export async function registerRoutes(
         }
       }
       
-      // If still not correct, check evolution chain and move compatibility
+      // If still not correct, check if the guessed Pokemon is a PRE-EVOLUTION of the correct one
+      // Logic: If the correct answer is Salamence with Fly, you can answer Salamence
+      //        If the correct answer is Salamence with a move Bagon learns, you can answer Bagon
+      //        But if the correct answer is Bagon with Fly, you CANNOT answer Salamence (Bagon can't learn Fly yet)
       if (!isCorrect) {
-        // Get full evolution family for both Pokemon (pre-evolutions + evolutions)
-        const correctFamily = await storage.getFullEvolutionFamily(roundData.correctPokemonId);
-        console.log(`[Answer] Correct Pokemon ${roundData.correctPokemonId} evolution family:`, correctFamily);
+        // Get pre-evolutions of the CORRECT Pokemon
+        // If the guessed Pokemon is in this chain, it means the correct Pokemon can learn moves from the guessed one
+        const correctPokemonChain = await storage.getPokemonWithPreEvolutions(roundData.correctPokemonId);
+        console.log(`[Answer] Correct Pokemon ${roundData.correctPokemonId} with pre-evolutions:`, correctPokemonChain);
         
-        const guessedFamily = await storage.getFullEvolutionFamily(guessedPokemonId);
-        console.log(`[Answer] Guessed Pokemon ${guessedPokemonId} evolution family:`, guessedFamily);
+        // Check if the guessed Pokemon is in the correct Pokemon's pre-evolution chain
+        const isPreEvolution = correctPokemonChain.includes(guessedPokemonId);
+        console.log(`[Answer] Is guessed Pokemon a pre-evolution of correct? ${isPreEvolution}`);
         
-        // Check if they're in the same evolution family
-        const sameFamily = correctFamily.some(id => guessedFamily.includes(id));
-        console.log(`[Answer] Same evolution family? ${sameFamily}`);
+        if (isPreEvolution) {
+          // The guessed Pokemon is a pre-evolution of the correct one
+          // Now check if the guessed Pokemon (and ITS pre-evolutions) can learn all the moves
         
-        if (sameFamily) {
-          // They're in the same evolution family
-          // Now calculate missing moves considering the guessed Pokemon AND its pre-evolutions
+        if (isPreEvolution) {
+          // The guessed Pokemon is a pre-evolution of the correct one
+          // Now check if the guessed Pokemon (and ITS pre-evolutions) can learn all the moves
           console.log(`[Answer] Calculating missing moves for Pokemon ${guessedPokemonId} (including pre-evos)`);
           
           // Get Pokemon names for logging
