@@ -30,7 +30,7 @@ const CommandEmpty = React.forwardRef<React.ElementRef<typeof CommandPrimitive.E
 CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
 
 const CommandItem = React.forwardRef<React.ElementRef<typeof CommandPrimitive.Item>, React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>>(({ className, ...props }, ref) => (
-  <CommandPrimitive.Item ref={ref} className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-lg outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[selected]:bg-accent data-[selected]:text-accent-foreground font-retro hover:bg-accent/50", className)} {...props} />
+  <CommandPrimitive.Item ref={ref} className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-lg outline-none data-[selected='true']:bg-accent data-[selected='true']:text-accent-foreground font-retro hover:bg-accent/50", className)} {...props} />
 ));
 CommandItem.displayName = CommandPrimitive.Item.displayName;
 

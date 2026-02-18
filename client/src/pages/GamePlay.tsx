@@ -105,11 +105,17 @@ export default function GamePlay() {
             spread: 70,
             origin: { y: 0.6 }
           });
+          
+          if (data.correctPokemon?.cryUrl) {
+            const audio = new Audio(data.correctPokemon.cryUrl);
+            audio.play().catch(e => console.error("Error playing cry:", e));
+          }
+
           setState(prev => ({
             ...prev,
             score: prev.score + data.points,
             roundActive: false,
-            feedback: { message: `Correct! It's ${selectedPokemon.name.replace(/-default.*/, "")}! (+${data.points})`, type: "success" },
+            feedback: { message: `Correct! It's ${formatName(selectedPokemon.name)}! (+${data.points})`, type: "success" },
             correctPokemon: data.correctPokemon ? { 
               name: data.correctPokemon.name, 
               imageUrl: data.correctPokemon.imageUrl 
@@ -119,6 +125,10 @@ export default function GamePlay() {
           const nextAttempt = state.attempt + 1;
           
           if (nextAttempt > 3) {
+            if (data.correctPokemon?.cryUrl) {
+              const audio = new Audio(data.correctPokemon.cryUrl);
+              audio.play().catch(e => console.error("Error playing cry:", e));
+            }
             setState(prev => ({
               ...prev,
               lives: prev.lives - 1,
@@ -139,6 +149,10 @@ export default function GamePlay() {
         }
       }
     });
+  };
+
+  const formatName = (name: string) => {
+    return name.replace(/-default.*/, "").replace(/-/g, " ");
   };
 
   const requestHint = (type: "generation" | "type") => {
@@ -174,26 +188,26 @@ export default function GamePlay() {
       <div className="max-w-4xl mx-auto pb-20">
         <GameHeader lives={state.lives} score={state.score} />
 
-        <div className="mt-6 mb-8 text-center space-y-2">
-          <h2 className="text-2xl md:text-3xl font-retro text-foreground pixel-text-shadow">
+        <div className="mt-6 mb-8 text-center space-y-2 px-4">
+          <h2 className="text-2xl md:text-3xl font-retro text-foreground pixel-text-shadow break-words">
             WHO'S THAT POKÉMON?
           </h2>
-          <p className="text-muted-foreground font-mono">
+          <p className="text-muted-foreground font-mono text-sm md:text-base">
             Identify the Pokémon from its moveset (Gen {state.maxGen} Rules)
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-          {startGame.isPending ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-36 bg-muted animate-pulse rounded-lg pixel-border-sm" />
-            ))
-          ) : (
-            state.moves.map((move, i) => (
-              <MoveCard key={i} index={i} {...move} />
-            ))
-          )}
-        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 w-full px-4">
+            {startGame.isPending ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-36 bg-muted animate-pulse rounded-lg pixel-border-sm" />
+              ))
+            ) : (
+              state.moves.map((move, i) => (
+                <MoveCard key={i} index={i} {...move} />
+              ))
+            )}
+          </div>
 
         <AnimatePresence mode="wait">
           {!state.roundActive && state.correctPokemon ? (
@@ -245,10 +259,10 @@ export default function GamePlay() {
                 </div>
               )}
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 px-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-bold uppercase tracking-wider ml-1">Your Guess:</label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <div className="flex-1">
                       <PokemonCombobox 
                         onSelect={(id, name) => setSelectedPokemon({ id, name })} 
@@ -259,7 +273,7 @@ export default function GamePlay() {
                     <RetroButton 
                       onClick={handleGuess}
                       disabled={!state.roundActive || !selectedPokemon || submitAnswer.isPending}
-                      className="px-6"
+                      className="px-6 py-3 sm:py-0 h-12 sm:h-auto"
                     >
                       <Send className="w-4 h-4 mr-2" />
                       GUESS
@@ -273,7 +287,7 @@ export default function GamePlay() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 px-4">
                 <RetroButton 
                   variant="outline" 
                   size="sm"

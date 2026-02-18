@@ -181,6 +181,17 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  app.get("/api/pokemon/:id/moves", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const gen = parseInt(req.query.gen as string) || 9;
+      const moves = await storage.getMovesForPokemon(id, gen);
+      res.json(moves);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching moves" });
+    }
+  });
+
   app.get(api.leaderboard.list.path, async (req, res) => {
     const scores = await storage.getHighScores();
     res.json(scores);
