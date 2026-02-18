@@ -747,8 +747,8 @@ export async function registerRoutes(
         .where(lte(versions.generationId, gen));
       const validVersionIds = validVersions.map(v => v.id);
       
-      // Find ALL Pokemon that can learn ALL these moves
-      const pokemonWithMoveset = await db.select({ 
+      // Find Pokemon that can DIRECTLY learn ALL these moves
+      const directLearners = await db.select({ 
           pokemonId: pokemonMoves.pokemonId,
           pokemonName: pokemon.name,
           count: sql<number>`count(distinct ${pokemonMoves.moveId})`
@@ -764,9 +764,44 @@ export async function registerRoutes(
         .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIds.length}`)
         .orderBy(pokemon.name);
       
-      const pokemonList = pokemonWithMoveset.map(p => p.pokemonName);
+      const directLearnerIds = directLearners.map(p => p.pokemonId);
+      console.log(`[Validator] Found ${directLearnerIds.length} Pokemon that directly learn all moves`);
       
-      console.log(`Found ${pokemonList.length} Pokemon that can learn this moveset`);
+      // Now find all evolutions of these Pokemon
+      // Logic: If Pikachu learns Quick Attack, we need to include Raichu
+      const allPokemonIds = new Set<number>(directLearnerIds);
+      
+      for (const learnerId of directLearnerIds) {
+        // Find Pokemon that evolve FROM this learner
+        const evos = await db.select()
+          .from(evolutions)
+          .where(eq(evolutions.evolvedSpeciesId, learnerId));
+        
+        console.log(`[Validator] Checking evolutions for Pokemon ID ${learnerId}, found ${evos.length} evolutions`);
+        
+        for (const evo of evos) {
+          allPokemonIds.add(evo.evolvesIntoSpeciesId);
+          console.log(`[Validator] Added evolution: Pokemon ${evo.evolvedSpeciesId} -> Pokemon ${evo.evolvesIntoSpeciesId}`);
+        }
+      }
+      
+      console.log(`[Validator] Total Pokemon IDs (learners + evolutions): ${allPokemonIds.size}`);
+      
+      // Get Pokemon names for all these IDs
+      const allPokemon = await db.select({
+        id: pokemon.id,
+        name: pokemon.name
+      })
+      .from(pokemon)
+      .where(and(
+        inArray(pokemon.id, Array.from(allPokemonIds)),
+        lte(pokemon.generationId, gen)
+      ))
+      .orderBy(pokemon.name);
+      
+      const pokemonList = allPokemon.map(p => p.name);
+      
+      console.log(`[Validator] Final result: ${pokemonList.length} Pokemon can learn this moveset (including evolutions)`);
       
       res.json({ pokemon: pokemonList });
     } catch (error) {
