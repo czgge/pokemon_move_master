@@ -244,7 +244,13 @@ export async function registerRoutes(
          correctPokemon = await storage.getPokemon(roundData.correctPokemonId);
       }
       if (isCorrect) {
-         correctPokemon = await storage.getPokemon(roundData.correctPokemonId);
+         // If the guessed Pokemon is different from the puzzle Pokemon (evolution case),
+         // show the guessed Pokemon instead
+         if (guessedPokemonId !== roundData.correctPokemonId) {
+           correctPokemon = await storage.getPokemon(guessedPokemonId);
+         } else {
+           correctPokemon = await storage.getPokemon(roundData.correctPokemonId);
+         }
       }
 
       console.log(`[Answer] Final response - isCorrect: ${isCorrect}, points: ${points}, missingMoves:`, missingMoves);
@@ -739,6 +745,44 @@ export async function registerRoutes(
         message: "Errore nel reset del database", 
         error: error instanceof Error ? error.message : String(error) 
       });
+    }
+  });
+
+  // DEBUG ENDPOINT - Check evolutions
+  app.get("/api/admin/check-evolutions", async (req, res) => {
+    try {
+      const evolutionCount = await db.select({ count: sql`count(*)` }).from(evolutions);
+      const sampleEvolutions = await db.select().from(evolutions).limit(10);
+      
+      // Check Exeggcute/Exeggutor specifically
+      const exeggcute = await db.select().from(pokemon).where(sql`lower(${pokemon.name}) LIKE '%exeggcute%'`);
+      const exeggutor = await db.select().from(pokemon).where(sql`lower(${pokemon.name}) LIKE '%exeggutor%'`);
+      
+      let exeggcuteEvolutions = [];
+      let exeggutorEvolutions = [];
+      
+      if (exeggcute.length > 0) {
+        exeggcuteEvolutions = await db.select()
+          .from(evolutions)
+          .where(sql`${evolutions.evolvedSpeciesId} = ${exeggcute[0].id} OR ${evolutions.evolvesIntoSpeciesId} = ${exeggcute[0].id}`);
+      }
+      
+      if (exeggutor.length > 0) {
+        exeggutorEvolutions = await db.select()
+          .from(evolutions)
+          .where(sql`${evolutions.evolvedSpeciesId} = ${exeggutor[0].id} OR ${evolutions.evolvesIntoSpeciesId} = ${exeggutor[0].id}`);
+      }
+      
+      res.json({
+        totalEvolutions: evolutionCount[0].count,
+        sampleEvolutions,
+        exeggcute: exeggcute[0] || null,
+        exeggutor: exeggutor[0] || null,
+        exeggcuteEvolutions,
+        exeggutorEvolutions
+      });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
   });
 
