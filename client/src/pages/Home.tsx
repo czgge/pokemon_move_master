@@ -11,7 +11,7 @@ export default function Home() {
 
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 md:gap-8 px-4">
         
         {/* Hero Section */}
         <motion.div 
@@ -24,11 +24,11 @@ export default function Home() {
             The Ultimate Moveset Challenge
           </div>
           
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-retro leading-tight text-foreground drop-shadow-sm">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-retro leading-tight text-foreground drop-shadow-sm px-4">
             WHO'S THAT <span className="text-primary block md:inline mt-2 md:mt-0">POKEMON?</span>
           </h1>
           
-          <p className="font-pixel text-xl md:text-2xl text-muted-foreground max-w-lg mx-auto leading-relaxed font-mono">
+          <p className="font-pixel text-base sm:text-xl md:text-2xl text-muted-foreground max-w-lg mx-auto leading-relaxed font-mono px-4">
             Test your knowledge! Can you guess the Pokémon based only on its unique moveset?
           </p>
         </motion.div>
@@ -42,7 +42,7 @@ export default function Home() {
         >
           <RetroButton 
             variant="primary" 
-            className="h-16 text-lg w-full shadow-lg hover:-translate-y-1"
+            className="h-14 md:h-16 text-base md:text-lg w-full shadow-lg hover:-translate-y-1"
             onClick={() => setLocation("/game/setup")}
           >
             <Gamepad2 className="w-6 h-6 mr-2" />
@@ -55,7 +55,7 @@ export default function Home() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full mt-8 max-w-2xl"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 w-full mt-6 md:mt-8 max-w-2xl px-4"
         >
           <QuickLinkCard 
             title="Leaderboard" 
