@@ -53,7 +53,8 @@ export const api = {
           points: z.number(),
           correctPokemon: z.custom<typeof pokemon.$inferSelect>().optional(),
           livesRemaining: z.number(),
-        }),
+          missingMoves: z.array(z.string()).default([]),
+        }).passthrough(),
       },
     },
     hint: {

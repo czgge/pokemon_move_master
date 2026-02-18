@@ -2,7 +2,7 @@ import { Layout } from "@/components/Layout";
 import { RetroButton } from "@/components/RetroButton";
 import { RetroCard } from "@/components/RetroCard";
 import { useLocation } from "wouter";
-import { Gamepad2, Trophy, BookOpen, Star } from "lucide-react";
+import { Gamepad2, Trophy, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +38,7 @@ export default function Home() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-lg"
+          className="w-full max-w-md"
         >
           <RetroButton 
             variant="primary" 
@@ -48,15 +48,6 @@ export default function Home() {
             <Gamepad2 className="w-6 h-6 mr-2" />
             START GAME
           </RetroButton>
-          
-          <RetroButton 
-            variant="outline" 
-            className="h-16 text-lg w-full bg-white"
-            onClick={() => setLocation("/leaderboard")}
-          >
-            <Trophy className="w-6 h-6 mr-2" />
-            LEADERBOARD
-          </RetroButton>
         </motion.div>
         
         {/* Features / Quick Links */}
@@ -64,8 +55,15 @@ export default function Home() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="grid grid-cols-1 sm:grid-cols-1 gap-6 w-full mt-12 max-w-sm"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full mt-8 max-w-2xl"
         >
+          <QuickLinkCard 
+            title="Leaderboard" 
+            icon={Trophy} 
+            description="Top players & scores"
+            onClick={() => setLocation("/leaderboard")}
+            color="text-yellow-500"
+          />
           <QuickLinkCard 
             title="Pokedex" 
             icon={BookOpen} 

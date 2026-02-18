@@ -36,7 +36,10 @@ export function useSubmitAnswer() {
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to submit answer");
-      return api.game.answer.responses[200].parse(await res.json());
+      const rawData = await res.json();
+      console.log('[useSubmitAnswer] Raw response (bypassing Zod):', rawData);
+      // Bypass Zod parsing to preserve missingMoves field
+      return rawData as AnswerResponse;
     },
   });
 }
@@ -57,11 +60,12 @@ export function useGetHint() {
 
 export function useSearchPokemon(query: string, maxGen: string) {
   return useQuery({
-    queryKey: [api.pokedex.search.path, query, maxGen],
+    queryKey: ["/api/game/search-pokemon", query, maxGen],
     queryFn: async () => {
       if (!query || query.length < 2) return [];
       
-      const url = `${api.pokedex.search.path}?query=${encodeURIComponent(query)}&maxGen=${maxGen}`;
+      // Use game-specific endpoint that excludes cosmetic form duplicates
+      const url = `/api/game/search-pokemon?query=${encodeURIComponent(query)}&maxGen=${maxGen}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to search pokemon");
       return api.pokedex.search.responses[200].parse(await res.json());
@@ -71,11 +75,14 @@ export function useSearchPokemon(query: string, maxGen: string) {
   });
 }
 
-export function useLeaderboard() {
+export function useLeaderboard(genFilter?: number) {
   return useQuery({
-    queryKey: [api.leaderboard.list.path],
+    queryKey: [api.leaderboard.list.path, genFilter],
     queryFn: async () => {
-      const res = await fetch(api.leaderboard.list.path);
+      const url = genFilter 
+        ? `${api.leaderboard.list.path}?gen=${genFilter}`
+        : api.leaderboard.list.path;
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch leaderboard");
       return api.leaderboard.list.responses[200].parse(await res.json());
     },

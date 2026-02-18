@@ -5,10 +5,14 @@ import { Trophy, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { RetroButton } from "@/components/RetroButton";
 import { useLocation } from "wouter";
+import { useState } from "react";
 
 export default function Leaderboard() {
-  const { data: scores, isLoading } = useLeaderboard();
+  const [selectedGen, setSelectedGen] = useState<number>(1);
+  const { data: scores, isLoading } = useLeaderboard(selectedGen);
   const [_, setLocation] = useLocation();
+
+  const generations = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   return (
     <Layout>
@@ -21,6 +25,23 @@ export default function Leaderboard() {
           <RetroButton onClick={() => setLocation("/")} variant="outline" size="sm">
             Back Home
           </RetroButton>
+        </div>
+
+        {/* Generation Tabs */}
+        <div className="mb-6 flex flex-wrap gap-2 justify-center">
+          {generations.map((gen) => (
+            <button
+              key={gen}
+              onClick={() => setSelectedGen(gen)}
+              className={`px-4 py-2 rounded font-retro text-sm transition-all pixel-border-sm ${
+                selectedGen === gen
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-foreground border-border hover:border-primary/50'
+              }`}
+            >
+              GEN {gen}
+            </button>
+          ))}
         </div>
 
         <RetroCard className="overflow-hidden p-0">

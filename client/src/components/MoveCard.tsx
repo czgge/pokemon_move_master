@@ -60,18 +60,18 @@ export function MoveCard({ name, type, power, accuracy, pp, index, description }
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mt-auto text-sm font-mono bg-black/20 p-2 rounded text-white relative z-10">
+      <div className="grid grid-cols-3 gap-2 mt-auto text-base font-mono bg-black/20 p-3 rounded text-white relative z-10">
         <div className="flex flex-col items-center">
-          <span className="text-[10px] uppercase tracking-wider opacity-70">Power</span>
-          <span className="font-bold">{power || "-"}</span>
+          <span className="text-xs uppercase tracking-wider opacity-80 font-bold">Power</span>
+          <span className="font-bold text-lg">{power || "-"}</span>
         </div>
         <div className="flex flex-col items-center border-l border-white/10">
-          <span className="text-[10px] uppercase tracking-wider opacity-70">PP</span>
-          <span className="font-bold">{pp || "-"}</span>
+          <span className="text-xs uppercase tracking-wider opacity-80 font-bold">PP</span>
+          <span className="font-bold text-lg">{pp || "-"}</span>
         </div>
         <div className="flex flex-col items-center border-l border-white/10">
-          <span className="text-[10px] uppercase tracking-wider opacity-70">Acc</span>
-          <span className="font-bold">{accuracy ? `${accuracy}%` : "-"}</span>
+          <span className="text-xs uppercase tracking-wider opacity-80 font-bold">Acc</span>
+          <span className="font-bold text-lg">{accuracy ? `${accuracy}%` : "-"}</span>
         </div>
       </div>
     </motion.div>

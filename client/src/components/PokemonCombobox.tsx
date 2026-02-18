@@ -38,14 +38,21 @@ interface PokemonComboboxProps {
   onSelect: (pokemonId: number, name: string) => void;
   maxGen: number;
   disabled?: boolean;
+  excludeIds?: number[]; // IDs of Pokemon to exclude from results
 }
 
-export function PokemonCombobox({ onSelect, maxGen, disabled }: PokemonComboboxProps) {
+export function PokemonCombobox({ onSelect, maxGen, disabled, excludeIds = [] }: PokemonComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const debouncedQuery = useDebounce(query, 300); // Wait 300ms before searching
   
   const { data: pokemonList, isLoading } = useSearchPokemon(debouncedQuery, maxGen.toString());
+  
+  // Filter out excluded Pokemon
+  const filteredPokemonList = React.useMemo(() => {
+    if (!pokemonList) return [];
+    return pokemonList.filter(p => !excludeIds.includes(p.id));
+  }, [pokemonList, excludeIds]);
 
   return (
     <div className="relative w-full max-w-lg mx-auto">
@@ -67,11 +74,11 @@ export function PokemonCombobox({ onSelect, maxGen, disabled }: PokemonComboboxP
                 </div>
               )}
               
-              {!isLoading && pokemonList?.length === 0 && (
+              {!isLoading && filteredPokemonList.length === 0 && (
                 <CommandEmpty>No Pokémon found.</CommandEmpty>
               )}
               
-              {!isLoading && pokemonList?.map((pokemon) => (
+              {!isLoading && filteredPokemonList.map((pokemon) => (
                 <CommandItem
                   key={pokemon.id}
                   value={pokemon.name}
@@ -100,8 +107,8 @@ export function PokemonCombobox({ onSelect, maxGen, disabled }: PokemonComboboxP
                      <div className="flex flex-col">
                        <span className="capitalize">{pokemon.name.replace(/-default.*/, "")}</span>
                        <span className="text-xs text-muted-foreground flex gap-1">
-                         <span className={cn("px-1 rounded text-[10px] text-white", `type-${pokemon.type1.toLowerCase()}`)}>{pokemon.type1}</span>
-                         {pokemon.type2 && <span className={cn("px-1 rounded text-[10px] text-white", `type-${pokemon.type2.toLowerCase()}`)}>{pokemon.type2}</span>}
+                         <span className={cn("px-1 rounded text-[10px]", `type-${pokemon.type1.toLowerCase()}`)}>{pokemon.type1}</span>
+                         {pokemon.type2 && <span className={cn("px-1 rounded text-[10px]", `type-${pokemon.type2.toLowerCase()}`)}>{pokemon.type2}</span>}
                        </span>
                      </div>
                   </div>

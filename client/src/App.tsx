@@ -9,6 +9,8 @@ import GameSetup from "@/pages/GameSetup";
 import GamePlay from "@/pages/GamePlay";
 import Leaderboard from "@/pages/Leaderboard";
 import Pokedex from "@/pages/Pokedex";
+import AdminReset from "@/pages/AdminReset";
+import Admin from "@/pages/Admin";
 
 function Router() {
   return (
@@ -18,6 +20,8 @@ function Router() {
       <Route path="/game/play" component={GamePlay} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/pokedex" component={Pokedex} />
+      <Route path="/admin/reset" component={AdminReset} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );

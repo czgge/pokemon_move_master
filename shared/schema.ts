@@ -1,5 +1,5 @@
 
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -26,7 +26,18 @@ export const pokemon = pgTable("pokemon", {
   type2: text("type_2"),
   imageUrl: text("image_url"),
   cryUrl: text("cry_url"),
-});
+  // Base stats
+  hp: integer("hp"),
+  attack: integer("attack"),
+  defense: integer("defense"),
+  specialAttack: integer("special_attack"),
+  specialDefense: integer("special_defense"),
+  speed: integer("speed"),
+}, (table) => ({
+  // Index for species name lookups (used in uniqueness checks)
+  speciesNameIdx: index("pokemon_species_name_idx").on(table.speciesName),
+  generationIdIdx: index("pokemon_generation_id_idx").on(table.generationId),
+}));
 
 export const moves = pgTable("moves", {
   id: integer("id").primaryKey(),
@@ -49,6 +60,21 @@ export const pokemonMoves = pgTable("pokemon_moves", {
   versionGroupId: integer("version_group_id"), // We'll map version identifiers to IDs
   level: integer("level").default(0),
   method: text("method"), // 'level-up', 'machine', 'tutor', 'egg'
+}, (table) => ({
+  // Indexes for common query patterns
+  pokemonIdIdx: index("pokemon_moves_pokemon_id_idx").on(table.pokemonId),
+  moveIdIdx: index("pokemon_moves_move_id_idx").on(table.moveId),
+  versionGroupIdIdx: index("pokemon_moves_version_group_id_idx").on(table.versionGroupId),
+  // Composite index for the most common query pattern
+  pokemonVersionIdx: index("pokemon_moves_pokemon_version_idx").on(table.pokemonId, table.versionGroupId),
+}));
+
+export const evolutions = pgTable("evolutions", {
+  id: serial("id").primaryKey(),
+  evolvedSpeciesId: integer("evolved_species_id").notNull(), // The species that evolves (e.g., Eevee)
+  evolvesIntoSpeciesId: integer("evolves_into_species_id").notNull(), // What it evolves into (e.g., Vaporeon)
+  evolutionTriggerId: integer("evolution_trigger_id"), // How it evolves (level, stone, etc.)
+  minLevel: integer("min_level"), // Minimum level for evolution
 });
 
 // === LEADERBOARD ===

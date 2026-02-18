@@ -24,6 +24,7 @@ type GameState = {
   hintsUsed: number;
   attempt: number;
   correctPokemon?: { name: string; imageUrl: string | null };
+  wrongGuesses: number[]; // Track wrong Pokemon IDs for this round
 };
 
 export default function GamePlay() {
@@ -36,16 +37,26 @@ export default function GamePlay() {
 
   const [config] = useState(() => {
     try {
-      return JSON.parse(sessionStorage.getItem("gameConfig") || '{"maxGen": 1}');
+      const saved = JSON.parse(sessionStorage.getItem("gameConfig") || '{"maxGen": 1, "difficulty": "easy"}');
+      return { maxGen: saved.maxGen || 1, difficulty: saved.difficulty || "easy" };
     } catch {
-      return { maxGen: 1 };
+      return { maxGen: 1, difficulty: "easy" };
     }
   });
+
+  // Difficulty settings
+  const difficultySettings = {
+    easy: { lives: 3, hintsAllowed: Infinity, scoreMultiplier: 1 },
+    medium: { lives: 2, hintsAllowed: 1, scoreMultiplier: 2 },
+    hard: { lives: 1, hintsAllowed: 0, scoreMultiplier: 3 },
+  };
+
+  const currentDifficulty = difficultySettings[config.difficulty as keyof typeof difficultySettings] || difficultySettings.easy;
 
   const [state, setState] = useState<GameState>({
     maxGen: config.maxGen,
     score: 0,
-    lives: 3,
+    lives: currentDifficulty.lives,
     roundToken: "",
     moves: [],
     generation: 1,
@@ -53,9 +64,10 @@ export default function GamePlay() {
     roundActive: false,
     hintsUsed: 0,
     attempt: 1,
+    wrongGuesses: [],
   });
 
-  const [hintMessage, setHintMessage] = useState<string | null>(null);
+  const [usedHints, setUsedHints] = useState<{ generation?: string; type?: string }>({});
 
   useEffect(() => {
     startNewRound();
@@ -68,13 +80,23 @@ export default function GamePlay() {
       roundActive: false,
       hintsUsed: 0,
       attempt: 1,
-      correctPokemon: undefined
+      correctPokemon: undefined,
+      wrongGuesses: [], // Reset wrong guesses for new round
     }));
-    setHintMessage(null);
+    setUsedHints({}); // Reset hints for new round
     setSelectedPokemon(null);
 
-    startGame.mutate({ maxGen: state.maxGen }, {
+    // Get seen movesets from session storage
+    const seenMovesetsStr = sessionStorage.getItem("seenMovesets");
+    const seenMovesets = seenMovesetsStr ? JSON.parse(seenMovesetsStr) : [];
+
+    startGame.mutate({ maxGen: config.maxGen, seenMovesets }, {
       onSuccess: (data) => {
+        // Create moveset key and add to seen list
+        const movesetKey = data.moves.map(m => m.name).sort().join('|');
+        const updatedSeen = [...seenMovesets, movesetKey];
+        sessionStorage.setItem("seenMovesets", JSON.stringify(updatedSeen));
+        
         setState(prev => ({
           ...prev,
           roundToken: data.roundToken,
@@ -91,6 +113,18 @@ export default function GamePlay() {
 
   const handleGuess = () => {
     if (!state.roundActive || !selectedPokemon) return;
+    
+    // Check if this Pokemon was already guessed wrong in this round
+    if (state.wrongGuesses.includes(selectedPokemon.id)) {
+      setState(prev => ({
+        ...prev,
+        feedback: { 
+          message: `You already tried ${formatName(selectedPokemon.name)} in this round!`, 
+          type: "error" 
+        }
+      }));
+      return;
+    }
 
     submitAnswer.mutate({
       roundToken: state.roundToken,
@@ -113,9 +147,9 @@ export default function GamePlay() {
 
           setState(prev => ({
             ...prev,
-            score: prev.score + data.points,
+            score: prev.score + (data.points * currentDifficulty.scoreMultiplier),
             roundActive: false,
-            feedback: { message: `Correct! It's ${formatName(selectedPokemon.name)}! (+${data.points})`, type: "success" },
+            feedback: { message: `Correct! It's ${formatName(selectedPokemon.name)}! (+${data.points * currentDifficulty.scoreMultiplier})`, type: "success" },
             correctPokemon: data.correctPokemon ? { 
               name: data.correctPokemon.name, 
               imageUrl: data.correctPokemon.imageUrl 
@@ -123,6 +157,18 @@ export default function GamePlay() {
           }));
         } else {
           const nextAttempt = state.attempt + 1;
+          
+          console.log('[GamePlay] Wrong answer data:', data);
+          console.log('[GamePlay] Missing moves:', data.missingMoves);
+          
+          // Build feedback message with missing moves
+          let feedbackMessage = `Wrong! ${formatName(selectedPokemon.name)}`;
+          if (data.missingMoves && data.missingMoves.length > 0) {
+            const movesList = data.missingMoves.map((m: string) => m.replace(/-/g, ' ')).join(', ');
+            feedbackMessage += ` cannot learn: ${movesList}`;
+          }
+          
+          console.log('[GamePlay] Feedback message:', feedbackMessage);
           
           if (nextAttempt > 3) {
             if (data.correctPokemon?.cryUrl) {
@@ -133,17 +179,20 @@ export default function GamePlay() {
               ...prev,
               lives: prev.lives - 1,
               roundActive: false,
-              feedback: { message: "Wrong! Attempts exhausted.", type: "error" },
+              feedback: { message: feedbackMessage, type: "error" },
               correctPokemon: data.correctPokemon ? {
                 name: data.correctPokemon.name,
                 imageUrl: data.correctPokemon.imageUrl
-              } : undefined
+              } : undefined,
+              wrongGuesses: [...prev.wrongGuesses, selectedPokemon.id], // Add to wrong guesses
             }));
           } else {
+            feedbackMessage += ` (${4 - nextAttempt} attempts left)`;
             setState(prev => ({
               ...prev,
               attempt: nextAttempt,
-              feedback: { message: `Wrong! Try again (${4 - nextAttempt} attempts left this round)`, type: "error" }
+              feedback: { message: feedbackMessage, type: "error" },
+              wrongGuesses: [...prev.wrongGuesses, selectedPokemon.id], // Add to wrong guesses
             }));
           }
         }
@@ -152,15 +201,72 @@ export default function GamePlay() {
   };
 
   const formatName = (name: string) => {
-    return name.replace(/-default.*/, "").replace(/-/g, " ");
+    if (!name) return "";
+    
+    // Remove "-default" suffix
+    let formatted = name.replace(/-default.*/, "");
+    
+    // Handle cases like "arceus-fighting (Fighting Form)" or "charizard (Mega Evolution X)"
+    const match = formatted.match(/^([^(]+)\s*\((.+)\)$/);
+    if (match) {
+      let baseName = match[1].trim().replace(/-/g, " ");
+      const formName = match[2].trim();
+      
+      // Split base name into words
+      const baseWords = baseName.toLowerCase().split(/\s+/);
+      const formWords = formName.toLowerCase().split(/\s+/);
+      
+      // Get the species name (first word)
+      const baseSpecies = baseWords[0];
+      const baseDescriptors = baseWords.slice(1); // e.g., ["fighting"] from "arceus fighting"
+      
+      // Check if form name contains the base descriptors (redundant info)
+      const redundantWords = baseDescriptors.filter(desc => formWords.includes(desc));
+      
+      if (redundantWords.length > 0) {
+        // Remove redundant words from form name
+        // e.g., "Fighting Form" with redundant "fighting" -> "Form"
+        let cleanedFormWords = formWords.filter(word => !redundantWords.includes(word));
+        
+        // Capitalize properly
+        const cleanedForm = cleanedFormWords
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+        
+        // Return "Species Descriptor Form" (e.g., "Arceus Fighting Form")
+        const capitalizedSpecies = baseSpecies.charAt(0).toUpperCase() + baseSpecies.slice(1);
+        const capitalizedDescriptors = baseDescriptors
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+        
+        return `${capitalizedSpecies} ${capitalizedDescriptors} ${cleanedForm}`.trim();
+      } else {
+        // No redundancy, return "Species (Form)" format
+        // e.g., "Charizard (Mega Evolution X)" -> "Charizard Mega Evolution X"
+        const capitalizedSpecies = baseSpecies.charAt(0).toUpperCase() + baseSpecies.slice(1);
+        return `${capitalizedSpecies} ${formName}`;
+      }
+    }
+    
+    // No parentheses, just replace hyphens and capitalize
+    return formatted.split(/\s+/).map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(" ");
   };
 
   const requestHint = (type: "generation" | "type") => {
-    if (!state.roundActive || getHint.isPending) return;
+    if (!state.roundActive || getHint.isPending || usedHints[type]) return; // Don't allow if already used
+    
+    // Check if hints are allowed based on difficulty
+    const totalHintsUsed = Object.keys(usedHints).length;
+    if (totalHintsUsed >= currentDifficulty.hintsAllowed) {
+      setState(prev => ({ ...prev, feedback: { message: "No more hints available in this difficulty!", type: "error" }}));
+      return;
+    }
     
     getHint.mutate({ roundToken: state.roundToken, type }, {
       onSuccess: (data) => {
-        setHintMessage(data.hint);
+        setUsedHints(prev => ({ ...prev, [type]: data.hint })); // Store the hint message
         setState(prev => ({ 
           ...prev, 
           hintsUsed: prev.hintsUsed + 1,
@@ -173,10 +279,41 @@ export default function GamePlay() {
     });
   };
 
+  const handleReset = () => {
+    if (!confirm("Are you sure you want to restart the game? Your current score will be lost.")) {
+      return;
+    }
+    
+    // Clear seen movesets
+    sessionStorage.removeItem("seenMovesets");
+    
+    // Reset state with difficulty-based lives
+    setState({
+      maxGen: config.maxGen,
+      score: 0,
+      lives: currentDifficulty.lives,
+      roundToken: "",
+      moves: [],
+      generation: 1,
+      feedback: null,
+      roundActive: false,
+      hintsUsed: 0,
+      attempt: 1,
+      wrongGuesses: [],
+    });
+    
+    setUsedHints({});
+    setSelectedPokemon(null);
+    
+    // Start new round
+    startNewRound();
+  };
+
   if (state.lives <= 0) {
     return (
       <GameOverScreen 
         score={state.score} 
+        maxGen={state.maxGen}
         lastPokemon={state.correctPokemon} 
         onRestart={() => setLocation("/game/setup")} 
       />
@@ -186,7 +323,7 @@ export default function GamePlay() {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto pb-20">
-        <GameHeader lives={state.lives} score={state.score} />
+        <GameHeader lives={state.lives} score={state.score} onReset={handleReset} />
 
         <div className="mt-6 mb-8 text-center space-y-2 px-4">
           <h2 className="text-2xl md:text-3xl font-retro text-foreground pixel-text-shadow break-words">
@@ -252,7 +389,7 @@ export default function GamePlay() {
               className="space-y-6"
             >
               {state.feedback && (
-                <div className={`p-4 rounded pixel-border-sm text-center font-bold ${
+                <div className={`p-4 rounded pixel-border-sm text-center font-bold break-words ${
                   state.feedback.type === 'error' ? 'bg-red-100 text-red-700 border-red-300' : 'bg-blue-100 text-blue-700'
                 }`}>
                   {state.feedback.message}
@@ -267,7 +404,8 @@ export default function GamePlay() {
                       <PokemonCombobox 
                         onSelect={(id, name) => setSelectedPokemon({ id, name })} 
                         maxGen={state.maxGen}
-                        disabled={!state.roundActive || submitAnswer.isPending} 
+                        disabled={!state.roundActive || submitAnswer.isPending}
+                        excludeIds={state.wrongGuesses} // Exclude already guessed Pokemon
                       />
                     </div>
                     <RetroButton 
@@ -292,27 +430,56 @@ export default function GamePlay() {
                   variant="outline" 
                   size="sm"
                   onClick={() => requestHint("generation")}
-                  disabled={!state.roundActive || getHint.isPending}
+                  disabled={
+                    !state.roundActive || 
+                    getHint.isPending || 
+                    !!usedHints.generation || 
+                    currentDifficulty.hintsAllowed === 0 ||
+                    Object.keys(usedHints).length >= currentDifficulty.hintsAllowed
+                  }
                   className="text-xs md:text-sm"
                 >
                   <Lightbulb className="w-4 h-4 mr-2" />
-                  Gen Hint (-1 Pt)
+                  {currentDifficulty.hintsAllowed === 0 
+                    ? "No Hints" 
+                    : usedHints.generation 
+                      ? "Used" 
+                      : "Gen Hint (-1 Pt)"}
                 </RetroButton>
                 <RetroButton 
                   variant="outline" 
                   size="sm"
                   onClick={() => requestHint("type")}
-                  disabled={!state.roundActive || getHint.isPending}
+                  disabled={
+                    !state.roundActive || 
+                    getHint.isPending || 
+                    !!usedHints.type || 
+                    currentDifficulty.hintsAllowed === 0 ||
+                    Object.keys(usedHints).length >= currentDifficulty.hintsAllowed
+                  }
                   className="text-xs md:text-sm"
                 >
                   <Zap className="w-4 h-4 mr-2" />
-                  Type Hint (-1 Pt)
+                  {currentDifficulty.hintsAllowed === 0 
+                    ? "No Hints" 
+                    : usedHints.type 
+                      ? "Used" 
+                      : "Type Hint (-1 Pt)"}
                 </RetroButton>
               </div>
 
-              {hintMessage && (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded text-center text-sm font-mono">
-                  💡 HINT: {hintMessage}
+              {(usedHints.generation || usedHints.type) && (
+                <div className="px-4 space-y-2">
+                  {usedHints.generation && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded text-center text-sm font-mono">
+                      💡 {usedHints.generation}
+                    </div>
+                  )}
+                  {usedHints.type && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded text-center text-sm font-mono">
+                      ⚡ {usedHints.type}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>
@@ -323,7 +490,7 @@ export default function GamePlay() {
   );
 }
 
-function GameOverScreen({ score, lastPokemon, onRestart }: { score: number, lastPokemon?: { name: string, imageUrl: string | null }, onRestart: () => void }) {
+function GameOverScreen({ score, maxGen, lastPokemon, onRestart }: { score: number, maxGen: number, lastPokemon?: { name: string, imageUrl: string | null }, onRestart: () => void }) {
   const [name, setName] = useState("");
   const submitScore = useSubmitScore();
 
@@ -332,7 +499,7 @@ function GameOverScreen({ score, lastPokemon, onRestart }: { score: number, last
     submitScore.mutate({
       playerName: name,
       score,
-      genFilter: 9, 
+      genFilter: maxGen, 
     });
   };
 

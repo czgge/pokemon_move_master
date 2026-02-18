@@ -51,25 +51,25 @@
 }
 
 @layer components {
-  /* Pokemon Type Colors */
-  .type-normal { @apply bg-[#A8A77A] text-white border-[#8a8964]; }
-  .type-fire { @apply bg-[#EE8130] text-white border-[#d06b22]; }
-  .type-water { @apply bg-[#6390F0] text-white border-[#4d78d3]; }
-  .type-electric { @apply bg-[#F7D02C] text-black border-[#dcb61c]; }
-  .type-grass { @apply bg-[#7AC74C] text-white border-[#62a639]; }
-  .type-ice { @apply bg-[#96D9D6] text-black border-[#7bc0bd]; }
-  .type-fighting { @apply bg-[#C22E28] text-white border-[#a0241f]; }
-  .type-poison { @apply bg-[#A33EA1] text-white border-[#863085]; }
-  .type-ground { @apply bg-[#E2BF65] text-black border-[#c7a652]; }
-  .type-flying { @apply bg-[#A98FF3] text-white border-[#8e72dd]; }
-  .type-psychic { @apply bg-[#F95587] text-white border-[#d93c6e]; }
-  .type-bug { @apply bg-[#A6B91A] text-white border-[#8a9a14]; }
-  .type-rock { @apply bg-[#B6A136] text-white border-[#98862a]; }
-  .type-ghost { @apply bg-[#735797] text-white border-[#5d447d]; }
-  .type-dragon { @apply bg-[#6F35FC] text-white border-[#5727cf]; }
-  .type-dark { @apply bg-[#705746] text-white border-[#584436]; }
-  .type-steel { @apply bg-[#B7B7CE] text-black border-[#9a9ab3]; }
-  .type-fairy { @apply bg-[#D685AD] text-white border-[#bd6d94]; }
+  /* Pokemon Type Colors - High contrast for readability (v2) */
+  .type-normal { @apply bg-[#9B9B6B] text-white border-[#7d7d56]; }
+  .type-fire { @apply bg-[#E8621C] text-white border-[#c75318]; }
+  .type-water { @apply bg-[#3D7DCA] text-white border-[#2f5f9e]; }
+  .type-electric { @apply bg-[#F0B800] text-black border-[#c79600]; }
+  .type-grass { @apply bg-[#5CA935] text-white border-[#4a8829]; }
+  .type-ice { @apply bg-[#4DB5B3] text-white border-[#3d9290]; }
+  .type-fighting { @apply bg-[#B8241E] text-white border-[#941d18]; }
+  .type-poison { @apply bg-[#923A91] text-white border-[#752e74]; }
+  .type-ground { @apply bg-[#D4A03A] text-white border-[#ab822f]; }
+  .type-flying { @apply bg-[#7D5FD8] text-white border-[#644bb0]; }
+  .type-psychic { @apply bg-[#E8457A] text-white border-[#c73862]; }
+  .type-bug { @apply bg-[#94A616] text-white border-[#778512]; }
+  .type-rock { @apply bg-[#A89030] text-white border-[#877426]; }
+  .type-ghost { @apply bg-[#634B88] text-white border-[#4f3c6d]; }
+  .type-dragon { @apply bg-[#5B2FE8] text-white border-[#4825ba]; }
+  .type-dark { @apply bg-[#5C4739] text-white border-[#4a392d]; }
+  .type-steel { @apply bg-[#8888AA] text-white border-[#6d6d88]; }
+  .type-fairy { @apply bg-[#C74E8C] text-white border-[#a13e70]; }
 
   /* Retro Utilities */
   .pixel-border {
