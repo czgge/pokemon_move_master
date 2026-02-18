@@ -663,10 +663,11 @@ export async function registerRoutes(
         )
       `);
       
-      // Create pokemon table
+      // Create pokemon table with ndex_id
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS pokemon (
           id INTEGER PRIMARY KEY,
+          ndex_id INTEGER,
           name TEXT NOT NULL,
           species_name TEXT NOT NULL,
           generation_id INTEGER,
