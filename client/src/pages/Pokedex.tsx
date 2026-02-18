@@ -42,6 +42,7 @@ export default function Pokedex() {
   });
 
   const formatName = (name: string) => {
+    if (!name) return "";
     return name.replace(/-default.*/, "").replace(/-/g, " ");
   };
 
