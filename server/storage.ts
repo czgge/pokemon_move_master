@@ -353,11 +353,12 @@ class DatabaseStorage implements IStorage {
     const validVersionIds = await getValidVersionIds(maxGen);
     if (validVersionIds.length === 0) return [];
 
-    // Get Pokemon and moves in a single query with LEFT JOIN
-    const result = await db.select({
-        pokemonId: pokemon.id,
-        pokemonSpeciesName: pokemon.speciesName,
-        pokemonGenId: pokemon.generationId,
+    // Get this Pokemon + its pre-evolutions
+    const pokemonWithPreEvos = await this.getPokemonWithPreEvolutions(pokemonId);
+    console.log(`[getMovesForPokemon] Pokemon ${pokemonId} with pre-evolutions:`, pokemonWithPreEvos);
+
+    // Get moves for this Pokemon AND its pre-evolutions
+    const result = await db.selectDistinct({
         moveId: moves.id,
         moveName: moves.name,
         moveType: moves.type,
@@ -366,61 +367,25 @@ class DatabaseStorage implements IStorage {
         movePp: moves.pp,
         moveGenId: moves.generationId
       })
-      .from(pokemon)
-      .leftJoin(pokemonMoves, eq(pokemonMoves.pokemonId, pokemon.id))
-      .leftJoin(moves, eq(moves.id, pokemonMoves.moveId))
+      .from(pokemonMoves)
+      .innerJoin(moves, eq(moves.id, pokemonMoves.moveId))
       .where(and(
-        eq(pokemon.id, pokemonId),
+        inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
         inArray(pokemonMoves.versionGroupId, validVersionIds)
       ));
     
-    if (result.length === 0 || !result[0].moveId) {
-      // No moves found, try base species fallback
-      const [target] = await db.select().from(pokemon).where(eq(pokemon.id, pokemonId));
-      if (!target || !target.speciesName || target.generationId > maxGen) return [];
-      
-      const nameBase = target.speciesName.split('-')[0];
-      
-      const fallbackResult = await db.selectDistinct({
-          id: moves.id,
-          name: moves.name,
-          type: moves.type,
-          power: moves.power,
-          accuracy: moves.accuracy,
-          pp: moves.pp,
-          generationId: moves.generationId
-        })
-        .from(moves)
-        .innerJoin(pokemonMoves, eq(moves.id, pokemonMoves.moveId))
-        .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
-        .where(and(
-          or(
-            eq(pokemon.speciesName, nameBase),
-            sql`${pokemon.speciesName} LIKE ${nameBase + '%'}`
-          ),
-          inArray(pokemonMoves.versionGroupId, validVersionIds)
-        ));
-      
-      return fallbackResult;
-    }
+    console.log(`[getMovesForPokemon] Found ${result.length} moves for Pokemon ${pokemonId}`);
     
-    // Deduplicate moves by ID
-    const movesMap = new Map<number, Move>();
-    for (const row of result) {
-      if (row.moveId && !movesMap.has(row.moveId)) {
-        movesMap.set(row.moveId, {
-          id: row.moveId,
-          name: row.moveName!,
-          type: row.moveType!,
-          power: row.movePower,
-          accuracy: row.moveAccuracy,
-          pp: row.movePp,
-          generationId: row.moveGenId!
-        });
-      }
-    }
-    
-    return Array.from(movesMap.values());
+    // Map to Move objects
+    return result.map(row => ({
+      id: row.moveId,
+      name: row.moveName,
+      type: row.moveType,
+      power: row.movePower,
+      accuracy: row.moveAccuracy,
+      pp: row.movePp,
+      generationId: row.moveGenId
+    }));
   }
 
   async checkUniqueMoveset(moveIds: number[], pokemonId: number, maxGen: number): Promise<boolean> {
@@ -570,7 +535,24 @@ class DatabaseStorage implements IStorage {
     // Get all pre-evolutions (going backwards in the chain)
     await getPreEvolutions(speciesId);
     
-    return Array.from(chain);
+    // Filter to only include default forms (or forms without '-' in species name)
+    // This prevents including all cosmetic Pikachu forms when checking Raichu's moves
+    const allPokemonInChain = await db.select({
+      id: pokemon.id,
+      speciesName: pokemon.speciesName
+    })
+    .from(pokemon)
+    .where(inArray(pokemon.id, Array.from(chain)));
+    
+    // Keep only default forms or forms that don't have cosmetic variants
+    const defaultFormIds = allPokemonInChain
+      .filter(p => 
+        p.speciesName.includes('default') || 
+        !p.speciesName.match(/-(?:rock-star|belle|pop-star|phd|libre|original-cap|hoenn-cap|sinnoh-cap|unova-cap|kalos-cap|alola-cap|partner-cap|world-cap)/)
+      )
+      .map(p => p.id);
+    
+    return defaultFormIds;
   }
 
   async areSameSpeciesOrCosmeticForm(pokemonId1: number, pokemonId2: number): Promise<boolean> {
