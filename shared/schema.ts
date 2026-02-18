@@ -36,6 +36,7 @@ export const moves = pgTable("moves", {
   accuracy: integer("accuracy"),
   pp: integer("pp"),
   generationId: integer("generation_id"),
+  description: text("description"), // Generic description
 });
 
 // Mapping table for Pokemon <-> Moves (Huge table)

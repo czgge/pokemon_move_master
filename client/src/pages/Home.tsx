@@ -64,7 +64,7 @@ export default function Home() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full mt-12"
+          className="grid grid-cols-1 sm:grid-cols-1 gap-6 w-full mt-12 max-w-sm"
         >
           <QuickLinkCard 
             title="Pokedex" 
@@ -72,20 +72,6 @@ export default function Home() {
             description="Browse movesets & stats"
             onClick={() => setLocation("/pokedex")}
             color="text-blue-500"
-          />
-          <QuickLinkCard 
-            title="Generations 1-9" 
-            icon={Star} 
-            description="Filter by any generation"
-            onClick={() => setLocation("/game/setup")}
-            color="text-yellow-500"
-          />
-          <QuickLinkCard 
-            title="Ranked" 
-            icon={Trophy} 
-            description="Compete for high scores"
-            onClick={() => setLocation("/leaderboard")}
-            color="text-red-500"
           />
         </motion.div>
       </div>

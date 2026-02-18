@@ -165,8 +165,53 @@ export async function registerRoutes(
     const maxGen = req.query.maxGen ? parseInt(req.query.maxGen as string) : undefined;
     const search = req.query.search as string;
     const page = req.query.page ? parseInt(req.query.page as string) : 1;
+    const moveFilters = req.query.moves ? (req.query.moves as string).split(',') : [];
     const limit = 20;
     const offset = (page - 1) * limit;
+
+    if (moveFilters.length > 0) {
+      // Custom logic for filtering by moves
+      try {
+        const moveIds = await db.select({ id: moves.id }).from(moves).where(inArray(moves.name, moveFilters));
+        const moveIdList = moveIds.map(m => m.id);
+        
+        if (moveIdList.length === 0) return res.json({ items: [], total: 0 });
+
+        const results = await db.select({ 
+          id: pokemon.id,
+          name: pokemon.name,
+          speciesName: pokemon.speciesName,
+          generationId: pokemon.generationId,
+          type1: pokemon.type1,
+          type2: pokemon.type2,
+          imageUrl: pokemon.imageUrl,
+          cryUrl: pokemon.cryUrl
+        })
+        .from(pokemonMoves)
+        .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
+        .where(and(
+          inArray(pokemonMoves.moveId, moveIdList),
+          maxGen ? lte(pokemon.generationId, maxGen) : undefined
+        ))
+        .groupBy(pokemon.id)
+        .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIdList.length}`)
+        .limit(limit)
+        .offset(offset);
+
+        const totalResult = await db.select({ count: sql<number>`count(distinct ${pokemon.id})` })
+          .from(pokemonMoves)
+          .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
+          .where(and(
+            inArray(pokemonMoves.moveId, moveIdList),
+            maxGen ? lte(pokemon.generationId, maxGen) : undefined
+          ));
+
+        return res.json({ items: results, total: Number(totalResult[0]?.count || 0) });
+      } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Error filtering by moves" });
+      }
+    }
 
     const result = await storage.getAllPokemon(maxGen, search, limit, offset);
     res.json(result);

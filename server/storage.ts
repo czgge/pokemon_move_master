@@ -99,38 +99,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMovesForPokemon(pokemonId: number, maxGen: number): Promise<Move[]> {
-    // 1. Get the pokemon to check generation
     const [target] = await db.select().from(pokemon).where(eq(pokemon.id, pokemonId));
     if (!target) return [];
 
-    // 2. Identify pre-evolutions (Complex without species/evolution table, 
-    // but we can try to infer or just stick to current form for MVP if table missing.
-    // The user explicitly asked for pre-evolutions: "if raichu is selected... consider also moves learned by pikachu".
-    // Since we don't have an evolution table seeded, we might be limited.
-    // However, `pokemon_moves` usually includes moves from pre-evolutions if they are "egg moves" or "tutor moves" available to the evolved form.
-    // But "Level up" moves from pre-evolutions are not always listed under the evolved form in standard datasets unless "Reminder" is valid.
-    
-    // Constraint: We only have `pokemon_moves` table.
-    // We'll proceed with fetching moves associated with THIS pokemon ID in the database.
-    // If the seed data is good (PokeDB/PokeAPI dump), it often includes the full learnset or we might miss some specific pre-evo exclusives.
-    // Given the constraints, we will query for the specific pokemonId.
+    const nameBase = target.name.split(' (')[0].split('-')[0];
 
-    // 3. Filter by Generation/Version Group
-    // We need to map `maxGen` to `version_group_id`s that belong to that generation OR OLDER.
-    // Actually, the user said: "if I select gen 3 only moves that are part of the learnset of that generation... should be valid".
-    // This implies we should ONLY look at version groups belonging to Gen 1, 2, 3.
-    // AND specifically, we usually want the *latest* learnset within that range (e.g. Emerald/FRLG for Gen 3).
-    
-    // Let's get version IDs for generations <= maxGen
     const validVersions = await db.select({ id: versions.id })
       .from(versions)
       .where(lte(versions.generationId, maxGen));
       
     const validVersionIds = validVersions.map(v => v.id);
-
     if (validVersionIds.length === 0) return [];
 
-    // Fetch unique moves
     const result = await db.selectDistinct({
         id: moves.id,
         name: moves.name,
@@ -138,37 +118,32 @@ export class DatabaseStorage implements IStorage {
         power: moves.power,
         accuracy: moves.accuracy,
         pp: moves.pp,
-        generationId: moves.generationId
+        generationId: moves.generationId,
+        description: moves.description
       })
       .from(moves)
       .innerJoin(pokemonMoves, eq(moves.id, pokemonMoves.moveId))
+      .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
       .where(and(
-        eq(pokemonMoves.pokemonId, pokemonId),
+        or(
+          eq(pokemonMoves.pokemonId, pokemonId),
+          sql`${pokemon.name} LIKE ${nameBase + '%'}`
+        ),
         inArray(pokemonMoves.versionGroupId, validVersionIds)
       ));
       
     return result;
   }
 
-  // Check if a set of moves uniquely identifies the target pokemon in the given generation
   async checkUniqueMoveset(moveIds: number[], pokemonId: number, maxGen: number): Promise<boolean> {
     if (moveIds.length === 0) return false;
 
-    // We need to find if ANY OTHER pokemon in (Gen <= maxGen) learns ALL these moves.
-    // Strategy:
-    // 1. Find all pokemon that learn move 1
-    // 2. Intersect with pokemon that learn move 2... move 4.
-    // 3. Filter by generation.
-    // 4. Count results. If > 1, then not unique.
-    
-    // We can do this with a "GROUP BY pokemon_id HAVING count(distinct move_id) = 4" query.
-    
     const validVersions = await db.select({ id: versions.id })
       .from(versions)
       .where(lte(versions.generationId, maxGen));
     const validVersionIds = validVersions.map(v => v.id);
     
-    if (validVersionIds.length === 0) return true; // Should not happen
+    if (validVersionIds.length === 0) return true;
 
     const otherPokemon = await db.select({ 
         id: pokemonMoves.pokemonId,
@@ -184,13 +159,9 @@ export class DatabaseStorage implements IStorage {
       .groupBy(pokemonMoves.pokemonId)
       .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIds.length}`);
       
-    // If we find any pokemon other than the target, it's not unique
     const others = otherPokemon.filter(p => p.id !== pokemonId);
-    
     return others.length === 0;
   }
-
-  // --- Seeding ---
 
   async seedGenerations(data: any[]) {
     if (data.length === 0) return;
