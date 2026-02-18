@@ -177,25 +177,31 @@ export async function registerRoutes(
       if (!isCorrect) {
         // Get evolution chain for the correct Pokemon (includes pre-evolutions)
         const correctChain = await storage.getEvolutionChain(roundData.correctPokemonId);
-        console.log(`Correct Pokemon ${roundData.correctPokemonId} evolution chain:`, correctChain);
+        console.log(`[Answer] Correct Pokemon ${roundData.correctPokemonId} evolution chain:`, correctChain);
         
         // Get evolution chain for the guessed Pokemon
         const guessedChain = await storage.getEvolutionChain(guessedPokemonId);
-        console.log(`Guessed Pokemon ${guessedPokemonId} evolution chain:`, guessedChain);
+        console.log(`[Answer] Guessed Pokemon ${guessedPokemonId} evolution chain:`, guessedChain);
         
         // Check if they're in the same evolution family
         const sameFamily = correctChain.some(id => guessedChain.includes(id));
+        console.log(`[Answer] Same evolution family? ${sameFamily}`);
         
         if (sameFamily) {
           // They're in the same evolution family
           // Check if the guessed Pokemon can learn ALL the puzzle moves (already calculated above)
           const canLearnAll = missingMoves.length === 0;
           
-          console.log(`Can guessed Pokemon learn all moves? ${canLearnAll}`);
+          console.log(`[Answer] Can guessed Pokemon learn all moves? ${canLearnAll} (missing: ${missingMoves.join(', ')})`);
           
           if (canLearnAll) {
+            console.log(`[Answer] Accepting evolution as correct answer!`);
             isCorrect = true;
+          } else {
+            console.log(`[Answer] Rejecting evolution - cannot learn all moves`);
           }
+        } else {
+          console.log(`[Answer] Not in same evolution family - rejecting`);
         }
       }
 
