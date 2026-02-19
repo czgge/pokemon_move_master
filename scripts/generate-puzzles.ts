@@ -153,39 +153,64 @@ async function generatePuzzles() {
       generation: number;
     }> = [];
     
+    const MAX_PUZZLES_PER_GEN = 20000;
+    const pokemonPuzzleCount = new Map<number, number>();
+    
+    // Shuffle Pokemon to give everyone a chance
+    const shuffledPokemon = [...filteredPokemon].sort(() => 0.5 - Math.random());
+    
     let processed = 0;
-    for (const pkmn of filteredPokemon) {
-      const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+    let rounds = 0;
+    
+    // Keep generating until we hit the limit or run out of options
+    while (puzzles.length < MAX_PUZZLES_PER_GEN && rounds < 10) {
+      rounds++;
+      console.log(`Round ${rounds}: ${puzzles.length}/${MAX_PUZZLES_PER_GEN} puzzles`);
       
-      if (moveIds.length < 4) continue;
-      
-      // Try to find up to 5 unique 4-move combinations for this Pokemon
-      const attempts = Math.min(20, Math.floor(moveIds.length / 4));
-      let foundPuzzles = 0;
-      
-      for (let i = 0; i < attempts && foundPuzzles < 5; i++) {
-        // Randomly select 4 moves
-        const shuffled = moveIds.sort(() => 0.5 - Math.random());
-        const selectedMoves = shuffled.slice(0, 4);
+      for (const pkmn of shuffledPokemon) {
+        if (puzzles.length >= MAX_PUZZLES_PER_GEN) break;
         
-        // Check if unique
-        const isUnique = await isUniqueMoveset(selectedMoves, pkmn.id, gen, allPokemonMoves);
+        const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+        if (moveIds.length < 4) continue;
         
-        if (isUnique) {
-          puzzles.push({
-            pokemonId: pkmn.id,
-            pokemonName: pkmn.name,
-            ndexId: pkmn.ndexId,
-            moveIds: selectedMoves.join(','),
-            generation: gen
-          });
-          foundPuzzles++;
+        // Limit puzzles per Pokemon to give variety
+        const currentCount = pokemonPuzzleCount.get(pkmn.id) || 0;
+        const maxPerPokemon = Math.max(3, Math.floor(MAX_PUZZLES_PER_GEN / shuffledPokemon.length));
+        
+        if (currentCount >= maxPerPokemon) continue;
+        
+        // Try to find a unique combination
+        const attempts = 10;
+        for (let i = 0; i < attempts; i++) {
+          // Randomly select 4 moves
+          const shuffled = moveIds.sort(() => 0.5 - Math.random());
+          const selectedMoves = shuffled.slice(0, 4);
+          
+          // Check if we already have this combination
+          const comboKey = selectedMoves.sort((a, b) => a - b).join(',');
+          if (puzzles.some(p => p.moveIds === comboKey)) continue;
+          
+          // Check if unique
+          const isUnique = await isUniqueMoveset(selectedMoves, pkmn.id, gen, allPokemonMoves);
+          
+          if (isUnique) {
+            puzzles.push({
+              pokemonId: pkmn.id,
+              pokemonName: pkmn.name,
+              ndexId: pkmn.ndexId,
+              moveIds: comboKey,
+              generation: gen
+            });
+            
+            pokemonPuzzleCount.set(pkmn.id, currentCount + 1);
+            break;
+          }
         }
-      }
-      
-      processed++;
-      if (processed % 50 === 0) {
-        console.log(`Processed ${processed}/${filteredPokemon.length} Pokemon, found ${puzzles.length} puzzles`);
+        
+        processed++;
+        if (processed % 100 === 0) {
+          console.log(`  Processed ${processed} attempts, found ${puzzles.length} puzzles`);
+        }
       }
     }
     

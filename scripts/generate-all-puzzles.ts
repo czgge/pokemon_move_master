@@ -96,6 +96,29 @@ async function isUniqueMoveset(
   return true;
 }
 
+// Check if at least 2 moves are different from previous combinations
+function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): boolean {
+  const currentSet = new Set(moveIds);
+  
+  for (const prevCombo of previousCombos) {
+    const prevMoves = prevCombo.split(',').map(Number);
+    const prevSet = new Set(prevMoves);
+    
+    // Count how many moves are the same
+    let sameCount = 0;
+    for (const move of currentSet) {
+      if (prevSet.has(move)) sameCount++;
+    }
+    
+    // If 3 or 4 moves are the same, reject (need at least 2 different)
+    if (sameCount >= 3) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
 async function generateAllPuzzles(gen: number) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`GENERATING ALL UNIQUE PUZZLES FOR GEN ${gen}`);
@@ -184,6 +207,7 @@ async function generateAllPuzzles(gen: number) {
     const pokemonStartTime = Date.now();
     let pokemonCombos = 0;
     let pokemonUnique = 0;
+    const pokemonPreviousCombos = new Set<string>();
     
     // Generate all 4-move combinations
     for (const combo of generateCombinations(moveIds, 4)) {
@@ -194,16 +218,21 @@ async function generateAllPuzzles(gen: number) {
       const isUnique = await isUniqueMoveset(combo, pkmn.id, gen, allPokemonMoves);
       
       if (isUnique) {
-        uniqueCombinations++;
-        pokemonUnique++;
-        
-        puzzles.push({
-          pokemonId: pkmn.id,
-          pokemonName: pkmn.name,
-          ndexId: pkmn.ndexId,
-          moveIds: combo.join(','),
-          generation: gen
-        });
+        // Check if at least 2 moves are different from previous combos for this Pokemon
+        if (hasMinimumVariation(combo, pokemonPreviousCombos)) {
+          uniqueCombinations++;
+          pokemonUnique++;
+          
+          puzzles.push({
+            pokemonId: pkmn.id,
+            pokemonName: pkmn.name,
+            ndexId: pkmn.ndexId,
+            moveIds: combo.join(','),
+            generation: gen
+          });
+          
+          pokemonPreviousCombos.add(combo.join(','));
+        }
       }
       
       // Progress update every 1000 combinations
