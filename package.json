@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "db:add-indexes": "tsx server/add-indexes.ts"
+    "db:add-indexes": "tsx server/add-indexes.ts",
+    "generate-puzzles": "tsx scripts/generate-puzzles.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -77,9 +78,9 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0",
-    "tsx": "^4.21.0",
-    "esbuild": "^0.25.0",
+    "zod-validation-error": "^3.4.0"
+  },
+  "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
@@ -97,12 +98,13 @@
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.8",
+    "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.5",
     "typescript": "5.6.3",
     "vite": "^7.3.0"
   },
-  "devDependencies": {},
   "overrides": {
     "drizzle-kit": {
       "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
