@@ -189,6 +189,29 @@ export default function Admin() {
     }
   };
 
+  const handleStopGeneration = async () => {
+    if (!confirm("Vuoi fermare la generazione in corso?")) {
+      return;
+    }
+    
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/stop-generation", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nello stop" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    }
+  };
+
   const handleDownloadPuzzle = (gen: number) => {
     // Create a temporary link element to force download
     const link = document.createElement('a');
@@ -363,6 +386,15 @@ export default function Admin() {
               className="w-full border-blue-300 text-blue-600"
             >
               Tutte Gen - Completo
+            </RetroButton>
+          </div>
+          <div className="border-t pt-3">
+            <RetroButton
+              onClick={handleStopGeneration}
+              variant="outline"
+              className="w-full border-red-300 text-red-600 hover:bg-red-50"
+            >
+              🛑 Ferma Generazione
             </RetroButton>
           </div>
           <div className="text-center text-xs text-muted-foreground font-mono">
