@@ -527,15 +527,15 @@ class DatabaseStorage implements IStorage {
       const currentId = queue.shift()!;
       
       // Find what this Pokemon evolved FROM (pre-evolution)
-      // We look for rows where evolvedPokemonId = currentId
-      // This gives us the preEvolutionPokemonId
+      // We look for rows where evolvesIntoSpeciesId = currentId (this Pokemon is the result)
+      // This gives us the evolvedSpeciesId (the pre-evolution)
       const preEvos = await db.select({
-        preEvolutionPokemonId: evolutions.preEvolutionPokemonId,
+        preEvolutionId: evolutions.evolvedSpeciesId,
         speciesName: pokemon.speciesName
       })
       .from(evolutions)
-      .innerJoin(pokemon, eq(evolutions.preEvolutionPokemonId, pokemon.id))
-      .where(eq(evolutions.evolvedPokemonId, currentId));
+      .innerJoin(pokemon, eq(evolutions.evolvedSpeciesId, pokemon.id))
+      .where(eq(evolutions.evolvesIntoSpeciesId, currentId));
       
       for (const preEvo of preEvos) {
         // Filter out cosmetic forms
@@ -551,10 +551,10 @@ class DatabaseStorage implements IStorage {
           speciesName.includes('-partner') ||
           speciesName.includes('-world');
         
-        if (!isCosmeticForm && !visited.has(preEvo.preEvolutionPokemonId)) {
-          visited.add(preEvo.preEvolutionPokemonId);
-          result.push(preEvo.preEvolutionPokemonId);
-          queue.push(preEvo.preEvolutionPokemonId);
+        if (!isCosmeticForm && !visited.has(preEvo.preEvolutionId)) {
+          visited.add(preEvo.preEvolutionId);
+          result.push(preEvo.preEvolutionId);
+          queue.push(preEvo.preEvolutionId);
         }
       }
     }
