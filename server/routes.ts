@@ -1472,7 +1472,7 @@ export async function registerRoutes(
             
             console.log(`Found ${filtered.length} Pokemon for Gen ${targetGen}`);
             
-            // Pre-load all moves
+            // Pre-load all moves (including pre-evolutions, like in the game)
             console.log("Pre-loading moves...");
             const allPokemonMoves = new Map<number, Set<number>>();
             
@@ -1484,6 +1484,7 @@ export async function registerRoutes(
             
             for (let i = 0; i < filtered.length; i++) {
               const pkmn = filtered[i];
+              // Include pre-evolutions (like in the game/dex)
               const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(pkmn.id);
               const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
                 .from(pokemonMoves)
@@ -1529,13 +1530,38 @@ export async function registerRoutes(
               }
               
               let uniqueCount = 0;
+              
+              // Get pre-evolutions of current Pokemon to exclude from uniqueness check
+              const currentPreEvos = await storage.getPokemonWithPreEvolutions(pkmn.id);
+              
+              // Track puzzles for this Pokemon to ensure diversity (at least 2 different moves)
+              const pokemonPuzzles: number[][] = [];
+              
               for (const combo of combinations) {
                 totalCombos++;
                 
-                // Check uniqueness
+                // Check diversity: combo must differ by at least 2 moves from all existing puzzles of same Pokemon
+                let isDiverse = true;
+                for (const existingCombo of pokemonPuzzles) {
+                  const sharedMoves = combo.filter(m => existingCombo.includes(m)).length;
+                  if (sharedMoves >= 3) { // If 3 or 4 moves are shared, not diverse enough
+                    isDiverse = false;
+                    break;
+                  }
+                }
+                
+                if (!isDiverse) continue; // Skip this combo, too similar to existing ones
+                
+                // Check uniqueness: combo is unique if no OTHER Pokemon (excluding pre-evolutions) can learn all 4 moves
                 let isUnique = true;
                 for (const [otherId, otherMoves] of allPokemonMoves.entries()) {
+                  // Skip self
                   if (otherId === pkmn.id) continue;
+                  
+                  // Skip pre-evolutions of current Pokemon (e.g., if checking Venusaur, skip Bulbasaur and Ivysaur)
+                  if (currentPreEvos.includes(otherId)) continue;
+                  
+                  // Check if other Pokemon can learn all 4 moves
                   if (combo.every(m => otherMoves.has(m))) {
                     isUnique = false;
                     break;
@@ -1544,6 +1570,7 @@ export async function registerRoutes(
                 
                 if (isUnique) {
                   uniqueCount++;
+                  pokemonPuzzles.push(combo); // Add to diversity check
                   puzzles.push({
                     pokemonId: pkmn.id,
                     pokemonName: pkmn.name,
