@@ -1191,101 +1191,35 @@ export async function registerRoutes(
       const { generation } = req.body;
       const gen = generation || 1;
       
-      console.log(`Starting puzzle generation for Gen ${gen}...`);
+      console.log(`Starting FAST puzzle generation for Gen ${gen}...`);
       
-      // This will run in the background
       res.json({ 
         success: true, 
-        message: `Generazione puzzle per Gen ${gen} avviata! Controlla i log del server per il progresso. Ci vorranno alcuni minuti.` 
+        message: `Generazione RAPIDA puzzle per Gen ${gen} avviata! Controlla i log del server per il progresso. Target: ~10,000 puzzles.` 
       });
       
-      // Run generation in background
-      (async () => {
-        try {
-          const puzzles: Array<{
-            pokemonId: number;
-            pokemonName: string;
-            ndexId: number;
-            moveIds: string;
-            generation: number;
-          }> = [];
-          
-          // Get all Pokemon for this generation
-          const allPokemon = await db.select({
-            id: pokemon.id,
-            name: pokemon.name,
-            ndexId: pokemon.ndexId,
-            speciesName: pokemon.speciesName
-          })
-          .from(pokemon)
-          .where(lte(pokemon.generationId, gen));
-          
-          // Filter cosmetic forms
-          const filtered = allPokemon.filter(p => {
-            const name = p.speciesName;
-            return !name.includes('-cap') &&
-                   !name.includes('-original') &&
-                   !name.includes('-hoenn') &&
-                   !name.includes('-sinnoh') &&
-                   !name.includes('-unova') &&
-                   !name.includes('-kalos') &&
-                   !name.includes('-alola') &&
-                   !name.includes('-partner') &&
-                   !name.includes('-world') &&
-                   !name.includes('-gigantamax') &&
-                   !name.includes('-totem');
-          });
-          
-          console.log(`Found ${filtered.length} Pokemon for Gen ${gen}`);
-          
-          let processed = 0;
-          for (const pkmn of filtered) {
-            const validMoves = await storage.getMovesForPokemon(pkmn.id, gen);
-            
-            if (validMoves.length >= 4) {
-              // Try to find up to 3 unique puzzles for this Pokemon
-              for (let attempt = 0; attempt < 10 && puzzles.filter(p => p.pokemonId === pkmn.id).length < 3; attempt++) {
-                const shuffled = validMoves.sort(() => 0.5 - Math.random());
-                const selected = shuffled.slice(0, 4);
-                const moveIds = selected.map(m => m.id);
-                
-                const isUnique = await storage.checkUniqueMoveset(moveIds, pkmn.id, gen);
-                
-                if (isUnique) {
-                  puzzles.push({
-                    pokemonId: pkmn.id,
-                    pokemonName: pkmn.name,
-                    ndexId: pkmn.ndexId,
-                    moveIds: moveIds.join(','),
-                    generation: gen
-                  });
-                }
-              }
-            }
-            
-            processed++;
-            if (processed % 50 === 0) {
-              console.log(`Processed ${processed}/${filtered.length} Pokemon, found ${puzzles.length} puzzles`);
-            }
-          }
-          
-          console.log(`Generated ${puzzles.length} puzzles for Gen ${gen}`);
-          
-          // Write to CSV
-          const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
-          const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-          const csvRows = puzzles.map(p => 
-            `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
-          ).join('\n');
-          
-          fs.mkdirSync(path.dirname(csvPath), { recursive: true });
-          fs.writeFileSync(csvPath, csvHeader + csvRows);
-          
-          console.log(`✅ Saved ${puzzles.length} puzzles to ${csvPath}`);
-        } catch (error) {
-          console.error(`Error generating puzzles for Gen ${gen}:`, error);
+      // Run the external script in background
+      const { spawn } = await import('child_process');
+      const scriptPath = path.join(process.cwd(), 'scripts', 'generate-puzzles.ts');
+      
+      // Use tsx to run TypeScript directly
+      const child = spawn('npx', ['tsx', scriptPath], {
+        cwd: process.cwd(),
+        stdio: 'inherit',
+        env: { ...process.env, GENERATION: gen.toString() }
+      });
+      
+      child.on('error', (error) => {
+        console.error(`Error running puzzle generation script:`, error);
+      });
+      
+      child.on('exit', (code) => {
+        if (code === 0) {
+          console.log(`✅ Puzzle generation for Gen ${gen} completed successfully`);
+        } else {
+          console.error(`❌ Puzzle generation for Gen ${gen} exited with code ${code}`);
         }
-      })();
+      });
       
     } catch (error) {
       console.error("Error starting puzzle generation:", error);
