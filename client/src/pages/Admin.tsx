@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { RetroButton } from "@/components/RetroButton";
 import { RetroCard } from "@/components/RetroCard";
@@ -19,9 +19,9 @@ export default function Admin() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Load puzzle files on mount
-  useState(() => {
+  useEffect(() => {
     loadPuzzleFiles();
-  });
+  }, []);
 
   const loadPuzzleFiles = async () => {
     try {
