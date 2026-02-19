@@ -25,12 +25,17 @@ export default function Pokedex() {
   const moveSearchRef = useRef<HTMLDivElement>(null);
   const [pokemonMoveSearch, setPokemonMoveSearch] = useState(""); // For searching within Pokemon modal
   const [activeTab, setActiveTab] = useState<"browse" | "validator">("browse"); // Tab state
+  const [showPokemonSuggestions, setShowPokemonSuggestions] = useState(false);
+  const pokemonSearchRef = useRef<HTMLDivElement>(null);
 
   // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (moveSearchRef.current && !moveSearchRef.current.contains(event.target as Node)) {
         setShowMoveSuggestions(false);
+      }
+      if (pokemonSearchRef.current && !pokemonSearchRef.current.contains(event.target as Node)) {
+        setShowPokemonSuggestions(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -67,6 +72,17 @@ export default function Pokedex() {
       return data;
     },
     enabled: debouncedMoveSearch.length >= 2
+  });
+
+  const { data: pokemonSuggestions } = useQuery({
+    queryKey: ["/api/pokemon/search", search, maxGen],
+    queryFn: async () => {
+      if (!search || search.length < 2) return [];
+      const res = await fetch(`/api/pokemon/search?query=${search}&gen=${maxGen}`);
+      if (!res.ok) return [];
+      return await res.json();
+    },
+    enabled: search.length >= 2
   });
 
   useEffect(() => {
@@ -203,22 +219,72 @@ export default function Pokedex() {
               <label className="font-retro text-xs uppercase text-muted-foreground block mb-2">
                 🔍 Pokémon Search
               </label>
-              <div className="relative">
+              <div className="relative" ref={pokemonSearchRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input 
                   placeholder="Search Pokémon..."
                   className="w-full pl-10 pr-10 py-2 rounded border-2 border-border focus:border-primary focus:outline-none font-mono text-sm"
                   value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                  onChange={(e) => { 
+                    setSearch(e.target.value); 
+                    setPage(1);
+                    setShowPokemonSuggestions(true);
+                  }}
+                  onFocus={() => setShowPokemonSuggestions(true)}
                 />
                 {search && (
                   <button 
-                    onClick={() => setSearch("")}
+                    onClick={() => {
+                      setSearch("");
+                      setShowPokemonSuggestions(false);
+                    }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 )}
+                
+                <AnimatePresence>
+                  {showPokemonSuggestions && pokemonSuggestions && pokemonSuggestions.length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute left-0 right-0 top-full mt-1 bg-white border-2 border-border rounded-lg shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto"
+                    >
+                      {pokemonSuggestions.map((pkmn: any) => (
+                        <button
+                          key={pkmn.id}
+                          type="button"
+                          className="w-full text-left px-4 py-2 hover:bg-primary/10 transition-colors font-mono text-xs border-b last:border-0 border-border flex items-center gap-2"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSearch(pkmn.name);
+                            setShowPokemonSuggestions(false);
+                            setPage(1);
+                          }}
+                        >
+                          {pkmn.imageUrl && (
+                            <img src={pkmn.imageUrl} alt={pkmn.name} className="w-8 h-8 pixelated" />
+                          )}
+                          <div className="flex-1">
+                            <div className="capitalize font-bold">{pkmn.name.replace(/-default.*/, '').replace(/-/g, ' ')}</div>
+                            <div className="flex gap-1 mt-0.5">
+                              <span className={cn("text-[8px] px-1.5 py-0.5 rounded uppercase font-bold", `type-${pkmn.type1.toLowerCase()}`)}>
+                                {pkmn.type1}
+                              </span>
+                              {pkmn.type2 && (
+                                <span className={cn("text-[8px] px-1.5 py-0.5 rounded uppercase font-bold", `type-${pkmn.type2.toLowerCase()}`)}>
+                                  {pkmn.type2}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 

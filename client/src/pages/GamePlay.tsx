@@ -116,6 +116,7 @@ export default function GamePlay() {
     
     // Check if this Pokemon was already guessed wrong in this round
     if (state.wrongGuesses.includes(selectedPokemon.id)) {
+      console.warn("Pokemon already guessed:", selectedPokemon.id, "wrongGuesses:", state.wrongGuesses);
       setState(prev => ({
         ...prev,
         feedback: { 
@@ -123,6 +124,7 @@ export default function GamePlay() {
           type: "error" 
         }
       }));
+      setSelectedPokemon(null); // Reset selection
       return;
     }
 
