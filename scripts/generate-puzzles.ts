@@ -1,16 +1,15 @@
 import { db } from "../server/db";
-import { pokemon, moves, pokemonMoves, evolutions } from "../shared/schema";
+import { pokemon, moves, pokemonMoves, evolutions, versions } from "../shared/schema";
 import { eq, lte, sql, and, inArray } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
 // Get valid version IDs for a generation
 async function getValidVersionIds(maxGen: number): Promise<number[]> {
-  const versions = await db.query.versions.findMany({
-    where: lte(db.query.versions.generationId, maxGen),
-    columns: { versionGroupId: true }
-  });
-  return [...new Set(versions.map(v => v.versionGroupId))];
+  const versionsList = await db.select({ versionGroupId: versions.versionGroupId })
+    .from(versions)
+    .where(lte(versions.generationId, maxGen));
+  return [...new Set(versionsList.map(v => v.versionGroupId))];
 }
 
 // Get Pokemon with their pre-evolutions (filtering cosmetic forms)
