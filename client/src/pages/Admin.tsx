@@ -9,7 +9,31 @@ export default function Admin() {
   const [indexLoading, setIndexLoading] = useState(false);
   const [puzzleLoading, setPuzzleLoading] = useState(false);
   const [selectedGen, setSelectedGen] = useState(1);
+  const [puzzleFiles, setPuzzleFiles] = useState<Array<{
+    filename: string;
+    generation: number;
+    size: number;
+    puzzleCount: number;
+    created: string;
+  }>>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Load puzzle files on mount
+  useState(() => {
+    loadPuzzleFiles();
+  });
+
+  const loadPuzzleFiles = async () => {
+    try {
+      const res = await fetch("/api/admin/puzzle-files");
+      const data = await res.json();
+      if (data.files) {
+        setPuzzleFiles(data.files);
+      }
+    } catch (error) {
+      console.error("Error loading puzzle files:", error);
+    }
+  };
 
   const handleResetDatabase = async () => {
     if (!confirm("Sei sicuro di voler resettare il database? Questa operazione cancellerà tutti i dati!")) {
@@ -95,6 +119,8 @@ export default function Admin() {
 
       if (data.success) {
         setMessage({ type: "success", text: data.message });
+        // Reload files after a delay
+        setTimeout(loadPuzzleFiles, 5000);
       } else {
         setMessage({ type: "error", text: data.message || "Errore nella generazione puzzle" });
       }
@@ -103,6 +129,10 @@ export default function Admin() {
     } finally {
       setPuzzleLoading(false);
     }
+  };
+
+  const handleDownloadPuzzle = (gen: number) => {
+    window.open(`/api/admin/download-puzzle/${gen}`, '_blank');
   };
 
   return (
@@ -250,6 +280,32 @@ export default function Admin() {
             Genera TUTTE le Generazioni (1-9)
           </RetroButton>
         </RetroCard>
+
+        {puzzleFiles.length > 0 && (
+          <RetroCard className="p-6 space-y-4">
+            <h3 className="text-lg font-retro text-foreground">File Puzzle Disponibili</h3>
+            <div className="space-y-2">
+              {puzzleFiles.map(file => (
+                <div key={file.filename} className="flex items-center justify-between p-3 pixel-border-sm bg-muted/30">
+                  <div className="flex-1">
+                    <p className="font-mono text-sm font-bold">Gen {file.generation}</p>
+                    <p className="text-xs text-muted-foreground">{file.puzzleCount} puzzle • {(file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <RetroButton
+                    onClick={() => handleDownloadPuzzle(file.generation)}
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    Scarica
+                  </RetroButton>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground font-mono">
+              💡 Scarica i file e caricali nella cartella <code className="bg-muted px-1">Pokemon-Move-Master/data/</code> del tuo repository
+            </p>
+          </RetroCard>
+        )}
 
         <RetroCard className="p-6 space-y-3">
           <h3 className="text-lg font-retro text-foreground">Informazioni</h3>
