@@ -2230,7 +2230,7 @@ async function seedDatabase(force: boolean = false) {
     const evolutionTreeData = await parseCsv('attached_assets/ndex_evolution_trees.csv');
     console.log(`Loaded ${evolutionTreeData.length} evolution tree entries`);
     
-    // Get all Pokemon from database
+    // Get all Pokemon from database (prefer default forms)
     const allPokemon = await db.select({
       id: pokemon.id,
       name: pokemon.name,
@@ -2239,6 +2239,25 @@ async function seedDatabase(force: boolean = false) {
     }).from(pokemon);
     
     console.log(`Total Pokemon in database: ${allPokemon.length}`);
+    
+    // Create a map: ndexId -> Pokemon (prefer default forms)
+    const pokemonByNdex = new Map<number, typeof allPokemon[0]>();
+    for (const p of allPokemon) {
+      const existing = pokemonByNdex.get(p.ndexId);
+      if (!existing) {
+        pokemonByNdex.set(p.ndexId, p);
+      } else {
+        // Prefer default forms (species_name ends with "-default" or has no suffix)
+        const isDefault = p.speciesName.endsWith('-default') || !p.speciesName.includes('-');
+        const existingIsDefault = existing.speciesName.endsWith('-default') || !existing.speciesName.includes('-');
+        
+        if (isDefault && !existingIsDefault) {
+          pokemonByNdex.set(p.ndexId, p);
+        }
+      }
+    }
+    
+    console.log(`Unique Pokemon by ndex: ${pokemonByNdex.size}`);
     
     // Group by evolution tree
     const evolutionTrees = new Map<number, number[]>();
@@ -2268,14 +2287,14 @@ async function seedDatabase(force: boolean = false) {
       if (ndexIds.includes(133) && ndexIds.length > 2) {
         console.log(`Detected Eevee tree (${treeId}) with ${ndexIds.length} Pokemon`);
         const eeveeNdex = 133;
-        const eevee = allPokemon.find(p => p.ndexId === eeveeNdex);
+        const eevee = pokemonByNdex.get(eeveeNdex);
         
         if (eevee) {
           // All other Pokemon in this tree evolve FROM Eevee
           for (const ndexId of ndexIds) {
             if (ndexId === eeveeNdex) continue; // Skip Eevee itself
             
-            const evo = allPokemon.find(p => p.ndexId === ndexId);
+            const evo = pokemonByNdex.get(ndexId);
             if (!evo) continue;
             
             // Skip cosmetic forms
@@ -2300,8 +2319,8 @@ async function seedDatabase(force: boolean = false) {
           const preEvoNdex = ndexIds[i];
           const evoNdex = ndexIds[i + 1];
           
-          const prePokemon = allPokemon.find(p => p.ndexId === preEvoNdex);
-          const evoPokemon = allPokemon.find(p => p.ndexId === evoNdex);
+          const prePokemon = pokemonByNdex.get(preEvoNdex);
+          const evoPokemon = pokemonByNdex.get(evoNdex);
           
           if (!prePokemon || !evoPokemon) continue;
           
