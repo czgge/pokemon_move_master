@@ -24,12 +24,12 @@ async function getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]>
     const currentId = queue.shift()!;
     
     const preEvos = await db.select({
-      preEvolutionPokemonId: evolutions.preEvolutionPokemonId,
+      preEvolutionId: evolutions.evolvedSpeciesId,
       speciesName: pokemon.speciesName
     })
     .from(evolutions)
-    .innerJoin(pokemon, eq(evolutions.preEvolutionPokemonId, pokemon.id))
-    .where(eq(evolutions.evolvedPokemonId, currentId));
+    .innerJoin(pokemon, eq(evolutions.evolvedSpeciesId, pokemon.id))
+    .where(eq(evolutions.evolvesIntoSpeciesId, currentId));
     
     for (const preEvo of preEvos) {
       // Filter out cosmetic forms
@@ -45,10 +45,10 @@ async function getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]>
         speciesName.includes('-partner') ||
         speciesName.includes('-world');
       
-      if (!isCosmeticForm && !visited.has(preEvo.preEvolutionPokemonId)) {
-        visited.add(preEvo.preEvolutionPokemonId);
-        result.push(preEvo.preEvolutionPokemonId);
-        queue.push(preEvo.preEvolutionPokemonId);
+      if (!isCosmeticForm && !visited.has(preEvo.preEvolutionId)) {
+        visited.add(preEvo.preEvolutionId);
+        result.push(preEvo.preEvolutionId);
+        queue.push(preEvo.preEvolutionId);
       }
     }
   }
