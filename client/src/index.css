@@ -32,6 +32,24 @@
   --radius: 0.25rem;
 }
 
+.dark {
+  --background: 220 20% 10%;
+  --foreground: 220 15% 90%;
+  --primary: 340 75% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 215 25% 20%;
+  --secondary-foreground: 220 15% 90%;
+  --muted: 215 25% 20%;
+  --muted-foreground: 220 10% 60%;
+  --accent: 45 20% 25%;
+  --accent-foreground: 220 15% 90%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 15% 25%;
+  --input: 220 15% 25%;
+  --ring: 340 75% 55%;
+}
+
 @layer base {
   body {
     @apply bg-background text-foreground antialiased;
@@ -44,6 +62,12 @@
     background-position: 0 0, 10px 10px;
   }
 
+  .dark body {
+    background-image: 
+      radial-gradient(#374151 1px, transparent 1px),
+      radial-gradient(#374151 1px, transparent 1px);
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-retro-head);
     @apply tracking-tighter text-foreground;
@@ -51,25 +75,97 @@
 }
 
 @layer components {
-  /* Pokemon Type Colors - High contrast for readability (v2) */
-  .type-normal { @apply bg-[#9B9B6B] text-white border-[#7d7d56]; }
-  .type-fire { @apply bg-[#E8621C] text-white border-[#c75318]; }
-  .type-water { @apply bg-[#3D7DCA] text-white border-[#2f5f9e]; }
-  .type-electric { @apply bg-[#F0B800] text-black border-[#c79600]; }
-  .type-grass { @apply bg-[#5CA935] text-white border-[#4a8829]; }
-  .type-ice { @apply bg-[#4DB5B3] text-white border-[#3d9290]; }
-  .type-fighting { @apply bg-[#B8241E] text-white border-[#941d18]; }
-  .type-poison { @apply bg-[#923A91] text-white border-[#752e74]; }
-  .type-ground { @apply bg-[#D4A03A] text-white border-[#ab822f]; }
-  .type-flying { @apply bg-[#7D5FD8] text-white border-[#644bb0]; }
-  .type-psychic { @apply bg-[#E8457A] text-white border-[#c73862]; }
-  .type-bug { @apply bg-[#94A616] text-white border-[#778512]; }
-  .type-rock { @apply bg-[#A89030] text-white border-[#877426]; }
-  .type-ghost { @apply bg-[#634B88] text-white border-[#4f3c6d]; }
-  .type-dragon { @apply bg-[#5B2FE8] text-white border-[#4825ba]; }
-  .type-dark { @apply bg-[#5C4739] text-white border-[#4a392d]; }
-  .type-steel { @apply bg-[#8888AA] text-white border-[#6d6d88]; }
-  .type-fairy { @apply bg-[#C74E8C] text-white border-[#a13e70]; }
+  /* Pokemon Type Colors - Direct CSS for immediate application */
+  .type-normal { 
+    background-color: #9B9B6B !important; 
+    color: white !important; 
+    border-color: #7d7d56 !important; 
+  }
+  .type-fire { 
+    background-color: #E8621C !important; 
+    color: white !important; 
+    border-color: #c75318 !important; 
+  }
+  .type-water { 
+    background-color: #3D7DCA !important; 
+    color: white !important; 
+    border-color: #2f5f9e !important; 
+  }
+  .type-electric { 
+    background-color: #F0B800 !important; 
+    color: black !important; 
+    border-color: #c79600 !important; 
+  }
+  .type-grass { 
+    background-color: #5CA935 !important; 
+    color: white !important; 
+    border-color: #4a8829 !important; 
+  }
+  .type-ice { 
+    background-color: #4DB5B3 !important; 
+    color: white !important; 
+    border-color: #3d9290 !important; 
+  }
+  .type-fighting { 
+    background-color: #B8241E !important; 
+    color: white !important; 
+    border-color: #941d18 !important; 
+  }
+  .type-poison { 
+    background-color: #923A91 !important; 
+    color: white !important; 
+    border-color: #752e74 !important; 
+  }
+  .type-ground { 
+    background-color: #D4A03A !important; 
+    color: white !important; 
+    border-color: #ab822f !important; 
+  }
+  .type-flying { 
+    background-color: #7D5FD8 !important; 
+    color: white !important; 
+    border-color: #644bb0 !important; 
+  }
+  .type-psychic { 
+    background-color: #E8457A !important; 
+    color: white !important; 
+    border-color: #c73862 !important; 
+  }
+  .type-bug { 
+    background-color: #94A616 !important; 
+    color: white !important; 
+    border-color: #778512 !important; 
+  }
+  .type-rock { 
+    background-color: #A89030 !important; 
+    color: white !important; 
+    border-color: #877426 !important; 
+  }
+  .type-ghost { 
+    background-color: #634B88 !important; 
+    color: white !important; 
+    border-color: #4f3c6d !important; 
+  }
+  .type-dragon { 
+    background-color: #5B2FE8 !important; 
+    color: white !important; 
+    border-color: #4825ba !important; 
+  }
+  .type-dark { 
+    background-color: #5C4739 !important; 
+    color: white !important; 
+    border-color: #4a392d !important; 
+  }
+  .type-steel { 
+    background-color: #8888AA !important; 
+    color: white !important; 
+    border-color: #6d6d88 !important; 
+  }
+  .type-fairy { 
+    background-color: #C74E8C !important; 
+    color: white !important; 
+    border-color: #a13e70 !important; 
+  }
 
   /* Retro Utilities */
   .pixel-border {
