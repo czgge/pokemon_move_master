@@ -2155,9 +2155,9 @@ async function seedDatabase(force: boolean = false) {
   // Seed evolutions
   console.log("Starting evolution seeding...");
   try {
-    // Use ndex_evolution_trees.csv which maps ndex_id to evolution_tree_id
-    const ndexEvolutionData = await parseCsv('attached_assets/ndex_evolution_trees.csv');
-    console.log(`Loaded ${ndexEvolutionData.length} ndex evolution mappings from CSV`);
+    // Use evolutions.csv which has grid_column/grid_row to show evolution relationships
+    const evolutionData = await parseCsv('attached_assets/evolutions_1771232352571.csv');
+    console.log(`Loaded ${evolutionData.length} evolution entries from CSV`);
     
     // Get all Pokemon from database
     const allPokemon = await db.select({
@@ -2169,16 +2169,18 @@ async function seedDatabase(force: boolean = false) {
     
     console.log(`Total Pokemon in database: ${allPokemon.length}`);
     
-    // Group Pokemon by evolution tree
-    const evolutionTrees = new Map<number, number[]>();
-    ndexEvolutionData.forEach((row: any) => {
-      const ndexId = parseInt(row.ndex_id);
+    // Group by evolution tree
+    const evolutionTrees = new Map<number, any[]>();
+    evolutionData.forEach((row: any) => {
       const treeId = parseInt(row.evolution_tree_id);
+      const formId = parseInt(row.pokemon_form_id);
+      const gridColumn = parseInt(row.grid_column);
+      const gridRow = parseInt(row.grid_row);
       
       if (!evolutionTrees.has(treeId)) {
         evolutionTrees.set(treeId, []);
       }
-      evolutionTrees.get(treeId)!.push(ndexId);
+      evolutionTrees.get(treeId)!.push({ formId, gridColumn, gridRow });
     });
     
     console.log(`Grouped into ${evolutionTrees.size} evolution trees`);
@@ -2186,65 +2188,47 @@ async function seedDatabase(force: boolean = false) {
     // Build evolution relationships
     const mappedEvolutions: any[] = [];
     
-    evolutionTrees.forEach((ndexIds, treeId) => {
-      // Sort by ndex_id (lower number = earlier evolution stage)
-      ndexIds.sort((a, b) => a - b);
-      
-      // Create evolution chain: each Pokemon evolves into the next one
-      for (let i = 0; i < ndexIds.length - 1; i++) {
-        const currentNdex = ndexIds[i];
-        const nextNdex = ndexIds[i + 1];
+    evolutionTrees.forEach((entries, treeId) => {
+      // For each entry, find what it evolves FROM (lower grid_column in same tree)
+      for (const entry of entries) {
+        // Find potential pre-evolutions (same tree, lower grid_column)
+        const preEvolutions = entries.filter(e => e.gridColumn < entry.gridColumn);
         
-        // Find all Pokemon forms with these ndex IDs (including regional forms)
-        const currentForms = allPokemon.filter(p => p.ndexId === currentNdex);
-        const nextForms = allPokemon.filter(p => p.ndexId === nextNdex);
+        if (preEvolutions.length === 0) continue; // This is a base Pokemon
         
-        // Prioritize default forms
-        const getDefaultOrFirst = (forms: typeof allPokemon) => {
-          const defaultForm = forms.find(f => f.speciesName.includes('default'));
-          return defaultForm || forms[0];
-        };
+        // Find the immediate pre-evolution (highest grid_column among pre-evolutions)
+        const maxPreColumn = Math.max(...preEvolutions.map(e => e.gridColumn));
+        const immediatePreEvos = preEvolutions.filter(e => e.gridColumn === maxPreColumn);
         
-        // Match default forms (or first available form)
-        for (const currentForm of currentForms) {
-          // Try to find matching evolution form (same regional variant)
-          let nextForm = nextForms.find(nf => {
-            // Match regional variants
-            if (currentForm.speciesName.includes('alolan')) return nf.speciesName.includes('alolan');
-            if (currentForm.speciesName.includes('galarian')) return nf.speciesName.includes('galarian');
-            if (currentForm.speciesName.includes('hisuian')) return nf.speciesName.includes('hisuian');
-            if (currentForm.speciesName.includes('paldean')) return nf.speciesName.includes('paldean');
-            // Default form
-            return nf.speciesName.includes('default') || !nf.speciesName.includes('-');
+        // Map form IDs to Pokemon IDs
+        const currentPokemon = allPokemon.find(p => p.id === entry.formId);
+        if (!currentPokemon) continue;
+        
+        for (const preEvo of immediatePreEvos) {
+          const prePokemon = allPokemon.find(p => p.id === preEvo.formId);
+          if (!prePokemon) continue;
+          
+          // Skip cosmetic forms
+          const isCosmetic = 
+            currentPokemon.speciesName.includes('-cap') ||
+            currentPokemon.speciesName.includes('-original') ||
+            currentPokemon.speciesName.includes('-totem') ||
+            prePokemon.speciesName.includes('-cap') ||
+            prePokemon.speciesName.includes('-original') ||
+            prePokemon.speciesName.includes('-totem');
+          
+          if (isCosmetic) continue;
+          
+          mappedEvolutions.push({
+            evolvedSpeciesId: prePokemon.id,
+            evolvesIntoSpeciesId: currentPokemon.id,
+            evolutionTriggerId: null,
+            minLevel: null
           });
           
-          // If no match found, use default or first form
-          if (!nextForm && nextForms.length > 0) {
-            nextForm = getDefaultOrFirst(nextForms);
-          }
-          
-          if (nextForm) {
-            // Skip if this is not a default form and we already have a default evolution
-            const isDefaultCurrent = currentForm.speciesName.includes('default');
-            const isDefaultNext = nextForm.speciesName.includes('default');
-            
-            // Only create evolution if both are default forms, or if no default forms exist
-            if ((isDefaultCurrent && isDefaultNext) || 
-                (!currentForms.some(f => f.speciesName.includes('default')) && 
-                 !nextForms.some(f => f.speciesName.includes('default')))) {
-              
-              mappedEvolutions.push({
-                evolvedSpeciesId: currentForm.id,
-                evolvesIntoSpeciesId: nextForm.id,
-                evolutionTriggerId: null,
-                minLevel: null
-              });
-              
-              // Log first few for debugging
-              if (mappedEvolutions.length <= 10) {
-                console.log(`Evolution ${mappedEvolutions.length}: ${currentForm.name} (ID:${currentForm.id}, Ndex:${currentNdex}) -> ${nextForm.name} (ID:${nextForm.id}, Ndex:${nextNdex})`);
-              }
-            }
+          // Log first few for debugging
+          if (mappedEvolutions.length <= 15) {
+            console.log(`Evolution ${mappedEvolutions.length}: ${prePokemon.name} (ID:${prePokemon.id}) -> ${currentPokemon.name} (ID:${currentPokemon.id}) [Tree:${treeId}, Col:${preEvo.gridColumn}->${entry.gridColumn}]`);
           }
         }
       }
