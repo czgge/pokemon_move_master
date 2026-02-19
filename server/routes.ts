@@ -1472,18 +1472,31 @@ export async function registerRoutes(
             
             console.log(`Found ${filtered.length} Pokemon for Gen ${targetGen}`);
             
-            // Pre-load all moves using the SAME logic as the game/Pokedex
-            console.log("Pre-loading moves...");
+            // OPTIMIZATION 1: Pre-load ALL moves for all Pokemon
+            console.log("Pre-loading moves for all Pokemon...");
             const allPokemonMoves = new Map<number, Set<number>>();
             
             for (let i = 0; i < filtered.length; i++) {
               const pkmn = filtered[i];
-              // Use storage.getMovesForPokemon() - same as Pokedex!
               const moves = await storage.getMovesForPokemon(pkmn.id, targetGen);
               allPokemonMoves.set(pkmn.id, new Set(moves.map(m => m.id)));
               
               if ((i + 1) % 20 === 0) {
                 console.log(`  Loaded moves for ${i + 1}/${filtered.length} Pokemon`);
+              }
+            }
+            
+            // OPTIMIZATION 2: Pre-load ALL pre-evolutions for all Pokemon
+            console.log("Pre-loading pre-evolutions for all Pokemon...");
+            const allPreEvolutions = new Map<number, number[]>();
+            
+            for (let i = 0; i < filtered.length; i++) {
+              const pkmn = filtered[i];
+              const preEvos = await storage.getPokemonWithPreEvolutions(pkmn.id);
+              allPreEvolutions.set(pkmn.id, preEvos);
+              
+              if ((i + 1) % 50 === 0) {
+                console.log(`  Loaded pre-evos for ${i + 1}/${filtered.length} Pokemon`);
               }
             }
             
@@ -1497,6 +1510,12 @@ export async function registerRoutes(
             }> = [];
             
             let totalCombos = 0;
+            const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${targetGen}-complete.csv`);
+            fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+            
+            // OPTIMIZATION 3: Write CSV header and prepare for incremental saves
+            const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+            fs.writeFileSync(csvPath, csvHeader);
             
             for (let i = 0; i < filtered.length; i++) {
               const pkmn = filtered[i];
@@ -1518,8 +1537,8 @@ export async function registerRoutes(
               
               let uniqueCount = 0;
               
-              // Get pre-evolutions of current Pokemon to exclude from uniqueness check
-              const currentPreEvos = await storage.getPokemonWithPreEvolutions(pkmn.id);
+              // Get pre-evolutions from pre-loaded map (NO DATABASE CALL!)
+              const currentPreEvos = allPreEvolutions.get(pkmn.id) || [pkmn.id];
               
               // Track puzzles for this Pokemon to ensure diversity (at least 2 different moves)
               const pokemonPuzzles: number[][] = [];
@@ -1574,23 +1593,33 @@ export async function registerRoutes(
               }
               
               console.log(`  ✓ ${pkmn.name}: ${uniqueCount}/${combinations.length} unique`);
+              
+              // OPTIMIZATION 3: Save incrementally every 10 Pokemon to avoid losing progress
+              if ((i + 1) % 10 === 0 && puzzles.length > 0) {
+                const csvRows = puzzles.map(p => 
+                  `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
+                ).join('\n') + '\n';
+                
+                fs.appendFileSync(csvPath, csvRows);
+                console.log(`  💾 Saved ${puzzles.length} puzzles (checkpoint at ${i + 1}/${filtered.length} Pokemon)`);
+                puzzles.length = 0; // Clear array to free memory
+              }
+            }
+            
+            // Save any remaining puzzles
+            if (puzzles.length > 0) {
+              const csvRows = puzzles.map(p => 
+                `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
+              ).join('\n') + '\n';
+              
+              fs.appendFileSync(csvPath, csvRows);
+              console.log(`  💾 Saved final ${puzzles.length} puzzles`);
             }
             
             const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-            console.log(`\n✅ Gen ${targetGen} COMPLETE: ${puzzles.length.toLocaleString()} puzzles in ${totalTime}m`);
-            
-            // Save
-            const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${targetGen}-complete.csv`);
-            const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-            const csvRows = puzzles.map(p => 
-              `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
-            ).join('\n');
-            
-            fs.mkdirSync(path.dirname(csvPath), { recursive: true });
-            fs.writeFileSync(csvPath, csvHeader + csvRows);
-            
             const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
-            console.log(`✓ Saved ${puzzles.length} puzzles to ${csvPath} (${fileSize} MB)`);
+            console.log(`\n✅ Gen ${targetGen} COMPLETE in ${totalTime}m`);
+            console.log(`✓ File: ${csvPath} (${fileSize} MB)`);
             
           } catch (error) {
             console.error(`❌ Error in Gen ${targetGen}:`, error);
