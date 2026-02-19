@@ -153,44 +153,83 @@ async function generatePuzzles() {
       generation: number;
     }> = [];
     
-    const MAX_PUZZLES_PER_GEN = 20000;
+    const MIN_PUZZLES_PER_GEN = 10000;
     const pokemonPuzzleCount = new Map<number, number>();
+    const pokemonHasUnique = new Set<number>();
     
-    // Shuffle Pokemon to give everyone a chance
+    // Phase 1: Ensure every Pokemon gets at least 1 unique puzzle
+    console.log("Phase 1: Ensuring all Pokemon are represented...");
     const shuffledPokemon = [...filteredPokemon].sort(() => 0.5 - Math.random());
     
-    let processed = 0;
-    let rounds = 0;
-    
-    // Keep generating until we hit the limit or run out of options
-    while (puzzles.length < MAX_PUZZLES_PER_GEN && rounds < 10) {
-      rounds++;
-      console.log(`Round ${rounds}: ${puzzles.length}/${MAX_PUZZLES_PER_GEN} puzzles`);
+    for (const pkmn of shuffledPokemon) {
+      const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+      if (moveIds.length < 4) continue;
       
-      for (const pkmn of shuffledPokemon) {
-        if (puzzles.length >= MAX_PUZZLES_PER_GEN) break;
+      // Try to find at least 1 unique combination
+      const attempts = 20;
+      for (let i = 0; i < attempts; i++) {
+        const shuffled = [...moveIds].sort(() => 0.5 - Math.random());
+        const selectedMoves = shuffled.slice(0, 4);
+        const comboKey = selectedMoves.sort((a, b) => a - b).join(',');
+        
+        if (puzzles.some(p => p.moveIds === comboKey)) continue;
+        
+        const isUnique = await isUniqueMoveset(selectedMoves, pkmn.id, gen, allPokemonMoves);
+        
+        if (isUnique) {
+          puzzles.push({
+            pokemonId: pkmn.id,
+            pokemonName: pkmn.name,
+            ndexId: pkmn.ndexId,
+            moveIds: comboKey,
+            generation: gen
+          });
+          
+          pokemonPuzzleCount.set(pkmn.id, 1);
+          pokemonHasUnique.add(pkmn.id);
+          break;
+        }
+      }
+      
+      if ((shuffledPokemon.indexOf(pkmn) + 1) % 50 === 0) {
+        console.log(`  Processed ${shuffledPokemon.indexOf(pkmn) + 1}/${shuffledPokemon.length} Pokemon, found ${puzzles.length} puzzles`);
+      }
+    }
+    
+    console.log(`Phase 1 complete: ${puzzles.length} puzzles (${pokemonHasUnique.size} Pokemon represented)`);
+    
+    // Phase 2: Fill up to MIN_PUZZLES_PER_GEN, prioritizing Pokemon with fewer puzzles
+    console.log(`Phase 2: Filling to ${MIN_PUZZLES_PER_GEN} puzzles...`);
+    let rounds = 0;
+    const maxRounds = 50;
+    
+    while (puzzles.length < MIN_PUZZLES_PER_GEN && rounds < maxRounds) {
+      rounds++;
+      
+      // Sort Pokemon by puzzle count (ascending) to prioritize those with fewer puzzles
+      const sortedPokemon = [...filteredPokemon].sort((a, b) => {
+        const countA = pokemonPuzzleCount.get(a.id) || 0;
+        const countB = pokemonPuzzleCount.get(b.id) || 0;
+        return countA - countB;
+      });
+      
+      let addedThisRound = 0;
+      
+      for (const pkmn of sortedPokemon) {
+        if (puzzles.length >= MIN_PUZZLES_PER_GEN) break;
         
         const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
         if (moveIds.length < 4) continue;
         
-        // Limit puzzles per Pokemon to give variety
-        const currentCount = pokemonPuzzleCount.get(pkmn.id) || 0;
-        const maxPerPokemon = Math.max(3, Math.floor(MAX_PUZZLES_PER_GEN / shuffledPokemon.length));
-        
-        if (currentCount >= maxPerPokemon) continue;
-        
-        // Try to find a unique combination
-        const attempts = 10;
+        // Try to find a new unique combination
+        const attempts = 15;
         for (let i = 0; i < attempts; i++) {
-          // Randomly select 4 moves
-          const shuffled = moveIds.sort(() => 0.5 - Math.random());
+          const shuffled = [...moveIds].sort(() => 0.5 - Math.random());
           const selectedMoves = shuffled.slice(0, 4);
-          
-          // Check if we already have this combination
           const comboKey = selectedMoves.sort((a, b) => a - b).join(',');
+          
           if (puzzles.some(p => p.moveIds === comboKey)) continue;
           
-          // Check if unique
           const isUnique = await isUniqueMoveset(selectedMoves, pkmn.id, gen, allPokemonMoves);
           
           if (isUnique) {
@@ -202,19 +241,41 @@ async function generatePuzzles() {
               generation: gen
             });
             
+            const currentCount = pokemonPuzzleCount.get(pkmn.id) || 0;
             pokemonPuzzleCount.set(pkmn.id, currentCount + 1);
+            addedThisRound++;
             break;
           }
         }
-        
-        processed++;
-        if (processed % 100 === 0) {
-          console.log(`  Processed ${processed} attempts, found ${puzzles.length} puzzles`);
-        }
+      }
+      
+      console.log(`  Round ${rounds}: Added ${addedThisRound} puzzles (total: ${puzzles.length}/${MIN_PUZZLES_PER_GEN})`);
+      
+      if (addedThisRound === 0) {
+        console.log(`  No new puzzles found, stopping early`);
+        break;
       }
     }
     
     console.log(`Generated ${puzzles.length} unique puzzles for Gen ${gen}`);
+    
+    // Show distribution statistics
+    const distribution = new Map<number, number>();
+    for (const puzzle of puzzles) {
+      const count = distribution.get(puzzle.pokemonId) || 0;
+      distribution.set(puzzle.pokemonId, count + 1);
+    }
+    
+    const pokemonWithPuzzles = distribution.size;
+    const avgPuzzlesPerPokemon = (puzzles.length / pokemonWithPuzzles).toFixed(1);
+    const maxPuzzles = Math.max(...Array.from(distribution.values()));
+    const minPuzzles = Math.min(...Array.from(distribution.values()));
+    
+    console.log(`\nDistribution stats:`);
+    console.log(`  Pokemon with puzzles: ${pokemonWithPuzzles}/${filteredPokemon.length}`);
+    console.log(`  Average puzzles per Pokemon: ${avgPuzzlesPerPokemon}`);
+    console.log(`  Min puzzles for a Pokemon: ${minPuzzles}`);
+    console.log(`  Max puzzles for a Pokemon: ${maxPuzzles}`);
     
     // Write to CSV
     const csvPath = path.join(__dirname, `../data/puzzles-gen${gen}.csv`);
@@ -226,7 +287,8 @@ async function generatePuzzles() {
     fs.mkdirSync(path.dirname(csvPath), { recursive: true });
     fs.writeFileSync(csvPath, csvHeader + csvRows);
     
-    console.log(`Saved to ${csvPath}`);
+    const fileSize = (fs.statSync(csvPath).size / 1024).toFixed(2);
+    console.log(`\nSaved to ${csvPath} (${fileSize} KB)`);
   }
   
   console.log("\nPuzzle generation complete!");
