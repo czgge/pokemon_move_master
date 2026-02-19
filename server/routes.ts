@@ -1472,28 +1472,20 @@ export async function registerRoutes(
             
             console.log(`Found ${filtered.length} Pokemon for Gen ${targetGen}`);
             
-            // Pre-load all moves (including pre-evolutions, like in the game)
+            // Pre-load all moves using the SAME logic as the game/Pokedex
             console.log("Pre-loading moves...");
             const allPokemonMoves = new Map<number, Set<number>>();
             
-            // Get valid version IDs for this generation
-            const validVersions = await db.select({ id: versions.id })
-              .from(versions)
-              .where(lte(versions.generationId, targetGen));
-            const validVersionIds = validVersions.map(v => v.id);
-            
             for (let i = 0; i < filtered.length; i++) {
               const pkmn = filtered[i];
-              // Include pre-evolutions (like in the game/dex)
-              const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(pkmn.id);
-              const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
-                .from(pokemonMoves)
-                .where(and(
-                  inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
-                  inArray(pokemonMoves.versionGroupId, validVersionIds)
-                ));
+              // Use storage.getMovesForPokemon() - same as Pokedex!
+              const moves = await storage.getMovesForPokemon(pkmn.id, targetGen);
+              allPokemonMoves.set(pkmn.id, new Set(moves.map(m => m.id)));
               
-              allPokemonMoves.set(pkmn.id, new Set(pokemonMovesList.map(m => m.moveId)));
+              if ((i + 1) % 20 === 0) {
+                console.log(`  Loaded moves for ${i + 1}/${filtered.length} Pokemon`);
+              }
+            }
               
               if ((i + 1) % 50 === 0) {
                 console.log(`  Loaded ${i + 1}/${filtered.length} Pokemon`);
@@ -1539,13 +1531,6 @@ export async function registerRoutes(
               
               for (const combo of combinations) {
                 totalCombos++;
-                
-                // VALIDATION: Check if Pokemon can actually learn ALL 4 moves
-                // This filters out bad data from the CSV
-                const pokemonMoveSet = allPokemonMoves.get(pkmn.id);
-                if (!pokemonMoveSet || !combo.every(m => pokemonMoveSet.has(m))) {
-                  continue; // Skip this combo, Pokemon can't learn all these moves
-                }
                 
                 // Check diversity: combo must differ by at least 2 moves from all existing puzzles of same Pokemon
                 let isDiverse = true;
@@ -1597,39 +1582,12 @@ export async function registerRoutes(
             }
             
             const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-            console.log(`\n✅ Gen ${targetGen} COMPLETE: ${puzzles.length.toLocaleString()} puzzles generated in ${totalTime}m`);
+            console.log(`\n✅ Gen ${targetGen} COMPLETE: ${puzzles.length.toLocaleString()} puzzles in ${totalTime}m`);
             
-            // POST-GENERATION VALIDATION: Remove puzzles with invalid moves
-            console.log(`\n🔍 Validating puzzles...`);
-            const validPuzzles = [];
-            let invalidCount = 0;
-            
-            for (const puzzle of puzzles) {
-              const moveIds = puzzle.moveIds.split(',').map(id => parseInt(id));
-              
-              // Get moves that this Pokemon can actually learn (using game logic)
-              const actualMoves = await storage.getMovesForPokemon(puzzle.pokemonId, targetGen);
-              const actualMoveIds = new Set(actualMoves.map(m => m.id));
-              
-              // Check if Pokemon can learn ALL 4 moves
-              const canLearnAll = moveIds.every(moveId => actualMoveIds.has(moveId));
-              
-              if (canLearnAll) {
-                validPuzzles.push(puzzle);
-              } else {
-                invalidCount++;
-                if (invalidCount <= 5) {
-                  console.log(`  ❌ Invalid: ${puzzle.pokemonName} with moves ${puzzle.moveIds}`);
-                }
-              }
-            }
-            
-            console.log(`✓ Validation complete: ${validPuzzles.length} valid, ${invalidCount} invalid (removed)`);
-            
-            // Save only valid puzzles
+            // Save
             const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${targetGen}-complete.csv`);
             const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-            const csvRows = validPuzzles.map(p => 
+            const csvRows = puzzles.map(p => 
               `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
             ).join('\n');
             
@@ -1637,7 +1595,7 @@ export async function registerRoutes(
             fs.writeFileSync(csvPath, csvHeader + csvRows);
             
             const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
-            console.log(`✓ Saved ${validPuzzles.length} valid puzzles to ${csvPath} (${fileSize} MB)`);
+            console.log(`✓ Saved ${puzzles.length} puzzles to ${csvPath} (${fileSize} MB)`);
             
           } catch (error) {
             console.error(`❌ Error in Gen ${targetGen}:`, error);
