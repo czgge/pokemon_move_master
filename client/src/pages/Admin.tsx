@@ -281,31 +281,48 @@ export default function Admin() {
           </RetroButton>
         </RetroCard>
 
-        {puzzleFiles.length > 0 && (
-          <RetroCard className="p-6 space-y-4">
+        <RetroCard className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
             <h3 className="text-lg font-retro text-foreground">File Puzzle Disponibili</h3>
-            <div className="space-y-2">
-              {puzzleFiles.map(file => (
-                <div key={file.filename} className="flex items-center justify-between p-3 pixel-border-sm bg-muted/30">
-                  <div className="flex-1">
-                    <p className="font-mono text-sm font-bold">Gen {file.generation}</p>
-                    <p className="text-xs text-muted-foreground">{file.puzzleCount} puzzle • {(file.size / 1024).toFixed(1)} KB</p>
-                  </div>
-                  <RetroButton
-                    onClick={() => handleDownloadPuzzle(file.generation)}
-                    variant="outline"
-                    className="text-xs"
-                  >
-                    Scarica
-                  </RetroButton>
-                </div>
-              ))}
+            <RetroButton
+              onClick={loadPuzzleFiles}
+              variant="outline"
+              className="text-xs"
+            >
+              Ricarica
+            </RetroButton>
+          </div>
+          
+          {puzzleFiles.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="font-mono text-sm">Nessun file puzzle trovato.</p>
+              <p className="text-xs mt-2">Genera i puzzle usando i pulsanti sopra.</p>
             </div>
-            <p className="text-xs text-muted-foreground font-mono">
-              💡 Scarica i file e caricali nella cartella <code className="bg-muted px-1">Pokemon-Move-Master/data/</code> del tuo repository
-            </p>
-          </RetroCard>
-        )}
+          ) : (
+            <>
+              <div className="space-y-2">
+                {puzzleFiles.map(file => (
+                  <div key={file.filename} className="flex items-center justify-between p-3 pixel-border-sm bg-muted/30">
+                    <div className="flex-1">
+                      <p className="font-mono text-sm font-bold">Gen {file.generation}</p>
+                      <p className="text-xs text-muted-foreground">{file.puzzleCount} puzzle • {(file.size / 1024).toFixed(1)} KB</p>
+                    </div>
+                    <RetroButton
+                      onClick={() => handleDownloadPuzzle(file.generation)}
+                      variant="outline"
+                      className="text-xs"
+                    >
+                      Scarica
+                    </RetroButton>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground font-mono">
+                💡 Scarica i file e caricali nella cartella <code className="bg-muted px-1">Pokemon-Move-Master/data/</code> del tuo repository
+              </p>
+            </>
+          )}
+        </RetroCard>
 
         <RetroCard className="p-6 space-y-3">
           <h3 className="text-lg font-retro text-foreground">Informazioni</h3>
