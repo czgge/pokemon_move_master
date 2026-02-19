@@ -1185,7 +1185,7 @@ export async function registerRoutes(
     }
   });
 
-  // ADMIN ENDPOINT - Generate puzzle files
+  // ADMIN ENDPOINT - Generate puzzle files (FAST version with systematic approach)
   app.post("/api/admin/generate-puzzles", async (req, res) => {
     try {
       const { generation } = req.body;
@@ -1198,28 +1198,196 @@ export async function registerRoutes(
         message: `Generazione RAPIDA puzzle per Gen ${gen} avviata! Controlla i log del server per il progresso. Target: ~10,000 puzzles.` 
       });
       
-      // Run the external script in background
-      const { spawn } = await import('child_process');
-      const scriptPath = path.join(process.cwd(), 'scripts', 'generate-puzzles.ts');
-      
-      // Use tsx to run TypeScript directly
-      const child = spawn('npx', ['tsx', scriptPath], {
-        cwd: process.cwd(),
-        stdio: 'inherit',
-        env: { ...process.env, GENERATION: gen.toString() }
-      });
-      
-      child.on('error', (error) => {
-        console.error(`Error running puzzle generation script:`, error);
-      });
-      
-      child.on('exit', (code) => {
-        if (code === 0) {
-          console.log(`✅ Puzzle generation for Gen ${gen} completed successfully`);
-        } else {
-          console.error(`❌ Puzzle generation for Gen ${gen} exited with code ${code}`);
+      // Run generation in background
+      (async () => {
+        try {
+          console.log(`\nGenerating puzzles for Generation ${gen}...`);
+          
+          // Get all Pokemon for this generation
+          const allPokemon = await db.select({
+            id: pokemon.id,
+            name: pokemon.name,
+            ndexId: pokemon.ndexId,
+            speciesName: pokemon.speciesName
+          })
+          .from(pokemon)
+          .where(lte(pokemon.generationId, gen));
+          
+          console.log(`Found ${allPokemon.length} Pokemon`);
+          
+          // Filter cosmetic forms
+          const filtered = allPokemon.filter(p => {
+            const name = p.speciesName;
+            return !name.includes('-cap') &&
+                   !name.includes('-original') &&
+                   !name.includes('-hoenn') &&
+                   !name.includes('-sinnoh') &&
+                   !name.includes('-unova') &&
+                   !name.includes('-kalos') &&
+                   !name.includes('-alola') &&
+                   !name.includes('-partner') &&
+                   !name.includes('-world') &&
+                   !name.includes('-gigantamax') &&
+                   !name.includes('-totem');
+          });
+          
+          console.log(`After filtering: ${filtered.length} Pokemon`);
+          console.log("Pre-loading moves for all Pokemon...");
+          
+          // Pre-load all moves for all Pokemon
+          const allPokemonMoves = new Map<number, Set<number>>();
+          
+          for (let i = 0; i < filtered.length; i++) {
+            const pkmn = filtered[i];
+            const moveIds = await storage.getMovesForPokemon(pkmn.id, gen);
+            allPokemonMoves.set(pkmn.id, new Set(moveIds.map(m => m.id)));
+            
+            if ((i + 1) % 100 === 0) {
+              console.log(`  Loaded moves for ${i + 1}/${filtered.length} Pokemon`);
+            }
+          }
+          
+          console.log("Generating unique puzzles (up to 10,000)...");
+          
+          const puzzles: Array<{
+            pokemonId: number;
+            pokemonName: string;
+            ndexId: number;
+            moveIds: string;
+            generation: number;
+          }> = [];
+          
+          const MAX_PUZZLES = 10000;
+          let totalChecked = 0;
+          
+          // Helper function to generate combinations
+          function* generateCombinations(moves: number[], maxCombos: number): Generator<number[]> {
+            let count = 0;
+            const n = moves.length;
+            
+            for (let i = 0; i < n - 3 && count < maxCombos; i++) {
+              for (let j = i + 1; j < n - 2 && count < maxCombos; j++) {
+                for (let k = j + 1; k < n - 1 && count < maxCombos; k++) {
+                  for (let l = k + 1; l < n && count < maxCombos; l++) {
+                    yield [moves[i], moves[j], moves[k], moves[l]];
+                    count++;
+                  }
+                }
+              }
+            }
+          }
+          
+          // Helper function to check if moveset is unique
+          function isUniqueMoveset(moveIds: number[], pokemonId: number): boolean {
+            for (const [otherPokemonId, otherMoves] of allPokemonMoves.entries()) {
+              if (otherPokemonId === pokemonId) continue;
+              
+              const canLearnAll = moveIds.every(moveId => otherMoves.has(moveId));
+              if (canLearnAll) {
+                return false;
+              }
+            }
+            return true;
+          }
+          
+          // Process each Pokemon
+          console.log("Processing Pokemon to find unique puzzles...");
+          
+          for (let i = 0; i < filtered.length && puzzles.length < MAX_PUZZLES; i++) {
+            const pkmn = filtered[i];
+            const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+            
+            if (moveIds.length < 4) {
+              continue;
+            }
+            
+            let foundForPokemon = 0;
+            const maxPerPokemon = 50;
+            
+            // Calculate total possible combinations
+            const totalPossible = (moveIds.length * (moveIds.length - 1) * (moveIds.length - 2) * (moveIds.length - 3)) / 24;
+            const maxCombosToCheck = Math.min(50000, totalPossible);
+            
+            // Generate and check combinations
+            for (const combo of generateCombinations(moveIds, maxCombosToCheck)) {
+              if (foundForPokemon >= maxPerPokemon) break;
+              if (puzzles.length >= MAX_PUZZLES) break;
+              
+              totalChecked++;
+              
+              // Check if unique
+              const isUnique = isUniqueMoveset(combo, pkmn.id);
+              
+              if (isUnique) {
+                const comboKey = combo.join(',');
+                
+                // Check if we already have this exact combination
+                if (puzzles.some(p => p.moveIds === comboKey)) continue;
+                
+                puzzles.push({
+                  pokemonId: pkmn.id,
+                  pokemonName: pkmn.name,
+                  ndexId: pkmn.ndexId,
+                  moveIds: comboKey,
+                  generation: gen
+                });
+                
+                foundForPokemon++;
+              }
+              
+              // Progress update
+              if (totalChecked % 10000 === 0) {
+                console.log(`  [${i + 1}/${filtered.length}] Checked ${totalChecked} combos, found ${puzzles.length} unique`);
+              }
+            }
+            
+            if (foundForPokemon > 0) {
+              console.log(`  ✓ ${pkmn.name}: Found ${foundForPokemon} unique puzzles`);
+            }
+            
+            // Progress update every 50 Pokemon
+            if ((i + 1) % 50 === 0) {
+              console.log(`Processed ${i + 1}/${filtered.length} Pokemon, found ${puzzles.length} puzzles`);
+            }
+          }
+          
+          console.log(`Generated ${puzzles.length} puzzles for Gen ${gen}`);
+          
+          // Show distribution statistics
+          const distribution = new Map<number, number>();
+          for (const puzzle of puzzles) {
+            const count = distribution.get(puzzle.pokemonId) || 0;
+            distribution.set(puzzle.pokemonId, count + 1);
+          }
+          
+          const pokemonWithPuzzles = distribution.size;
+          const avgPuzzlesPerPokemon = (puzzles.length / pokemonWithPuzzles).toFixed(1);
+          const maxPuzzles = Math.max(...Array.from(distribution.values()));
+          const minPuzzles = Math.min(...Array.from(distribution.values()));
+          
+          console.log(`\nDistribution stats:`);
+          console.log(`  Pokemon with puzzles: ${pokemonWithPuzzles}/${filtered.length}`);
+          console.log(`  Average puzzles per Pokemon: ${avgPuzzlesPerPokemon}`);
+          console.log(`  Min puzzles for a Pokemon: ${minPuzzles}`);
+          console.log(`  Max puzzles for a Pokemon: ${maxPuzzles}`);
+          
+          // Write to CSV
+          const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
+          const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+          const csvRows = puzzles.map(p => 
+            `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
+          ).join('\n');
+          
+          fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+          fs.writeFileSync(csvPath, csvHeader + csvRows);
+          
+          const fileSize = (fs.statSync(csvPath).size / 1024).toFixed(2);
+          console.log(`\n✅ Saved ${puzzles.length} puzzles to ${csvPath} (${fileSize} KB)`);
+          
+        } catch (error) {
+          console.error(`Error generating puzzles for Gen ${gen}:`, error);
         }
-      });
+      })();
       
     } catch (error) {
       console.error("Error starting puzzle generation:", error);
