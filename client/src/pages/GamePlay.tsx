@@ -379,7 +379,7 @@ export default function GamePlay() {
               <RetroButton 
                 size="lg" 
                 onClick={startNewRound}
-                className="w-full max-w-xs animate-bounce"
+                className="w-full max-w-xs"
               >
                 Next Round <ArrowRight className="ml-2 w-5 h-5" />
               </RetroButton>
