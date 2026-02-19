@@ -25,13 +25,20 @@ async function loadPuzzlesForGen(gen: number) {
     return puzzleCache.get(gen)!;
   }
   
-  const csvPath = path.join(process.cwd(), `data/puzzles-gen${gen}.csv`);
+  // Check for complete file first, then regular file
+  const completeFile = path.join(process.cwd(), `data/puzzles-gen${gen}-complete.csv`);
+  const regularFile = path.join(process.cwd(), `data/puzzles-gen${gen}.csv`);
+  
+  const csvPath = fs.existsSync(completeFile) ? completeFile : regularFile;
   
   // Check if file exists
   if (!fs.existsSync(csvPath)) {
     console.log(`Puzzle file not found for gen ${gen}, will generate on-the-fly`);
     return [];
   }
+  
+  const isComplete = csvPath.includes('-complete');
+  console.log(`Loading ${isComplete ? 'COMPLETE' : 'regular'} puzzles for gen ${gen} from ${path.basename(csvPath)}`);
   
   return new Promise<Array<{
     pokemonId: number;
@@ -53,7 +60,7 @@ async function loadPuzzlesForGen(gen: number) {
       })
       .on('end', () => {
         puzzleCache.set(gen, puzzles);
-        console.log(`Loaded ${puzzles.length} puzzles for gen ${gen}`);
+        console.log(`✓ Loaded ${puzzles.length} ${isComplete ? 'COMPLETE' : 'regular'} puzzles for gen ${gen}`);
         resolve(puzzles);
       })
       .on('error', reject);
