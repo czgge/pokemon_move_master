@@ -2,37 +2,16 @@ import { Layout } from "@/components/Layout";
 import { RetroButton } from "@/components/RetroButton";
 import { RetroCard } from "@/components/RetroCard";
 import { useLocation } from "wouter";
-import { Gamepad2, Trophy, BookOpen, Moon, Sun } from "lucide-react";
+import { Gamepad2, Trophy, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/contexts/ThemeContext";
 
 export default function Home() {
   const [_, setLocation] = useLocation();
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <Layout>
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 md:gap-8 px-4">
-        
-        {/* Theme Toggle */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute top-4 right-4"
-        >
-          <button
-            onClick={toggleTheme}
-            className="p-3 rounded-lg pixel-border bg-background hover:bg-accent transition-colors"
-            aria-label="Toggle theme"
-          >
-            {theme === "light" ? (
-              <Moon className="w-5 h-5 text-foreground" />
-            ) : (
-              <Sun className="w-5 h-5 text-foreground" />
-            )}
-          </button>
-        </motion.div>
         
         {/* Hero Section */}
         <motion.div 
