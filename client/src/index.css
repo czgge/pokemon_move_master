@@ -33,21 +33,25 @@
 }
 
 .dark {
-  --background: 220 20% 10%;
-  --foreground: 220 15% 90%;
-  --primary: 340 75% 55%;
+  --background: 220 20% 12%;
+  --foreground: 220 15% 95%;
+  --primary: 340 75% 60%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 215 25% 20%;
-  --secondary-foreground: 220 15% 90%;
-  --muted: 215 25% 20%;
-  --muted-foreground: 220 10% 60%;
-  --accent: 45 20% 25%;
-  --accent-foreground: 220 15% 90%;
+  --secondary: 215 25% 18%;
+  --secondary-foreground: 220 15% 95%;
+  --muted: 215 25% 18%;
+  --muted-foreground: 220 10% 70%;
+  --accent: 215 25% 22%;
+  --accent-foreground: 220 15% 95%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 98%;
-  --border: 220 15% 25%;
+  --border: 220 15% 30%;
   --input: 220 15% 25%;
-  --ring: 340 75% 55%;
+  --ring: 340 75% 60%;
+  --card: 220 20% 15%;
+  --card-foreground: 220 15% 95%;
+  --popover: 220 20% 15%;
+  --popover-foreground: 220 15% 95%;
 }
 
 @layer base {
@@ -64,8 +68,8 @@
 
   .dark body {
     background-image: 
-      radial-gradient(#374151 1px, transparent 1px),
-      radial-gradient(#374151 1px, transparent 1px);
+      radial-gradient(#1f2937 1px, transparent 1px),
+      radial-gradient(#1f2937 1px, transparent 1px);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -179,4 +183,59 @@
   .pixel-text-shadow {
     text-shadow: 2px 2px 0px rgba(0,0,0,0.2);
   }
+
+  /* Dark mode overrides for hardcoded colors */
+  .dark .bg-white {
+    @apply bg-card;
+  }
+
+  .dark .text-black {
+    @apply text-card-foreground;
+  }
+
+  .dark .border-black {
+    @apply border-border;
+  }
+
+  .dark .bg-gray-50,
+  .dark .bg-gray-100 {
+    @apply bg-muted;
+  }
+
+  .dark .bg-gray-200 {
+    @apply bg-accent;
+  }
+
+  .dark .text-gray-600,
+  .dark .text-gray-700,
+  .dark .text-gray-800,
+  .dark .text-gray-900 {
+    @apply text-foreground;
+  }
+
+  .dark .text-gray-500 {
+    @apply text-muted-foreground;
+  }
+
+  .dark .border-gray-200,
+  .dark .border-gray-300 {
+    @apply border-border;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    @apply bg-input text-foreground border-border;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    @apply text-muted-foreground;
+  }
+
+  .dark .shadow-lg,
+  .dark .shadow-xl {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
 }
+
