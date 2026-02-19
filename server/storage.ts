@@ -407,8 +407,8 @@ class DatabaseStorage implements IStorage {
     
     const targetSpeciesBase = targetPokemon.speciesName.split('-')[0];
     
-    // OPTIMIZED APPROACH:
-    // Step 1: Find all Pokemon that directly learn ALL the moves
+    // FAST APPROACH: Only check for direct learners
+    // This is much faster and still catches most duplicates
     const directLearners = await db.select({ 
         pokemonId: pokemonMoves.pokemonId
       })
@@ -423,103 +423,8 @@ class DatabaseStorage implements IStorage {
       .groupBy(pokemonMoves.pokemonId)
       .having(sql`count(distinct ${pokemonMoves.moveId}) = ${moveIds.length}`);
     
-    if (directLearners.length > 0) {
-      // Found at least one other Pokemon that can learn all moves directly
-      return false;
-    }
-    
-    // Step 2: Check evolution chains more efficiently
-    // Get candidates that learn at least 2 of the moves (optimization)
-    const candidates = await db.select({
-        pokemonId: pokemonMoves.pokemonId,
-        moveId: pokemonMoves.moveId
-      })
-      .from(pokemonMoves)
-      .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
-      .where(and(
-        inArray(pokemonMoves.moveId, moveIds),
-        inArray(pokemonMoves.versionGroupId, validVersionIds),
-        lte(pokemon.generationId, maxGen),
-        sql`${pokemon.speciesName} NOT LIKE ${targetSpeciesBase + '%'}`
-      ));
-    
-    // Group by Pokemon
-    const pokemonMoveMap = new Map<number, Set<number>>();
-    for (const row of candidates) {
-      if (!pokemonMoveMap.has(row.pokemonId)) {
-        pokemonMoveMap.set(row.pokemonId, new Set());
-      }
-      pokemonMoveMap.get(row.pokemonId)!.add(row.moveId);
-    }
-    
-    // Filter to viable candidates (learn at least 2 moves)
-    const viableCandidateIds = Array.from(pokemonMoveMap.entries())
-      .filter(([_, moves]) => moves.size >= 2)
-      .map(([id]) => id);
-    
-    // Limit candidates for performance
-    if (viableCandidateIds.length > 25) {
-      return false; // Too many candidates, likely not unique
-    }
-    
-    if (viableCandidateIds.length === 0) {
-      return true; // No viable candidates
-    }
-    
-    // Get evolution chains for these candidates
-    const candidateEvolutions = await db.select({
-        evolvedId: evolutions.evolvedPokemonId,
-        preEvoId: evolutions.preEvolutionPokemonId
-      })
-      .from(evolutions)
-      .where(inArray(evolutions.evolvedPokemonId, viableCandidateIds));
-    
-    // Build evolution map
-    const evolutionMap = new Map<number, number[]>();
-    for (const evo of candidateEvolutions) {
-      if (!evolutionMap.has(evo.evolvedId)) {
-        evolutionMap.set(evo.evolvedId, []);
-      }
-      evolutionMap.get(evo.evolvedId)!.push(evo.preEvoId);
-    }
-    
-    // Helper to get pre-evolutions recursively
-    const getPreEvolutions = (pokemonId: number, visited = new Set<number>()): number[] => {
-      if (visited.has(pokemonId)) return [];
-      visited.add(pokemonId);
-      
-      const result = [pokemonId];
-      const preEvos = evolutionMap.get(pokemonId) || [];
-      
-      for (const preEvoId of preEvos) {
-        result.push(...getPreEvolutions(preEvoId, visited));
-      }
-      
-      return result;
-    };
-    
-    // For each candidate, check if it + its pre-evolutions can learn all moves
-    for (const candidateId of viableCandidateIds) {
-      const evolutionChain = getPreEvolutions(candidateId);
-      
-      // Get all moves for this evolution chain
-      const chainMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
-        .from(pokemonMoves)
-        .where(and(
-          inArray(pokemonMoves.pokemonId, evolutionChain),
-          inArray(pokemonMoves.versionGroupId, validVersionIds)
-        ));
-      
-      const chainMoveIds = chainMovesList.map(m => m.moveId);
-      
-      // Check if this chain can learn all required moves
-      if (moveIds.every(moveId => chainMoveIds.includes(moveId))) {
-        return false; // Found another Pokemon that can learn all moves
-      }
-    }
-    
-    // No other Pokemon can learn all these moves
-    return true;
+    // If we found direct learners, not unique
+    return directLearners.length === 0;
   }
 
   async seedGenerations(data: any[]) {
