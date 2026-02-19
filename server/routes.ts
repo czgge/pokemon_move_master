@@ -726,36 +726,54 @@ export async function registerRoutes(
       const gen = parseInt(req.query.gen as string) || 9;
       if (!query) return res.json([]);
 
-      const results = await db.select({
+      // Get all matching Pokemon
+      const allResults = await db.select({
         id: pokemon.id,
         name: pokemon.name,
         speciesName: pokemon.speciesName,
         type1: pokemon.type1,
         type2: pokemon.type2,
         imageUrl: pokemon.imageUrl,
-        generationId: pokemon.generationId
+        generationId: pokemon.generationId,
+        ndexId: pokemon.ndexId
       })
         .from(pokemon)
         .where(and(
           sql`lower(${pokemon.name}) LIKE ${`%${query.toLowerCase()}%`}`,
-          lte(pokemon.generationId, gen),
-          // Filter out alternative forms that shouldn't appear in search
-          sql`${pokemon.speciesName} NOT LIKE '%-sunny'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-rainy'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-snowy'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-cap'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-original'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-hoenn'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-sinnoh'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-unova'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-kalos'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-alola'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-partner'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-world'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-gigantamax'`,
-          sql`${pokemon.speciesName} NOT LIKE '%-totem'`
+          lte(pokemon.generationId, gen)
         ))
-        .limit(10);
+        .orderBy(pokemon.ndexId);
+
+      // Filter to keep only one form per ndex (prefer default)
+      const seenNdex = new Set<number>();
+      const results = [];
+      
+      for (const pkmn of allResults) {
+        if (!seenNdex.has(pkmn.ndexId)) {
+          // Prefer default form
+          const isDefault = pkmn.speciesName.includes('-default') || 
+                           !pkmn.speciesName.includes('-');
+          
+          if (isDefault) {
+            seenNdex.add(pkmn.ndexId);
+            results.push(pkmn);
+          }
+        }
+        
+        if (results.length >= 10) break;
+      }
+      
+      // If we don't have enough results, add non-default forms
+      if (results.length < 10) {
+        for (const pkmn of allResults) {
+          if (!seenNdex.has(pkmn.ndexId)) {
+            seenNdex.add(pkmn.ndexId);
+            results.push(pkmn);
+            if (results.length >= 10) break;
+          }
+        }
+      }
+
       res.json(results);
     } catch (err) {
       console.error("Error in /api/pokemon/search:", err);
