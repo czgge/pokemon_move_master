@@ -515,45 +515,51 @@ class DatabaseStorage implements IStorage {
     return Array.from(chain);
   }
 
-  async getPokemonWithPreEvolutions(speciesId: number): Promise<number[]> {
-    // Get only the Pokemon itself and its pre-evolutions (NOT future evolutions)
-    const chain = new Set<number>([speciesId]);
+  async getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]> {
+    // Get only this Pokemon and its direct pre-evolutions (NOT sibling evolutions)
+    // Example: Flareon should get Eevee, but NOT Vaporeon/Jolteon/etc.
     
-    // Helper to recursively get pre-evolutions (going backwards)
-    const getPreEvolutions = async (id: number) => {
-      const preEvos = await db.select()
-        .from(evolutions)
-        .where(eq(evolutions.evolvesIntoSpeciesId, id));
+    const result = [pokemonId];
+    const visited = new Set<number>([pokemonId]);
+    const queue = [pokemonId];
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
       
-      for (const evo of preEvos) {
-        if (!chain.has(evo.evolvedSpeciesId)) {
-          chain.add(evo.evolvedSpeciesId);
-          await getPreEvolutions(evo.evolvedSpeciesId);
+      // Find what this Pokemon evolved FROM (pre-evolution)
+      // We look for rows where evolvedPokemonId = currentId
+      // This gives us the preEvolutionPokemonId
+      const preEvos = await db.select({
+        preEvolutionPokemonId: evolutions.preEvolutionPokemonId,
+        speciesName: pokemon.speciesName
+      })
+      .from(evolutions)
+      .innerJoin(pokemon, eq(evolutions.preEvolutionPokemonId, pokemon.id))
+      .where(eq(evolutions.evolvedPokemonId, currentId));
+      
+      for (const preEvo of preEvos) {
+        // Filter out cosmetic forms
+        const speciesName = preEvo.speciesName;
+        const isCosmeticForm = 
+          speciesName.includes('-cap') ||
+          speciesName.includes('-original') ||
+          speciesName.includes('-hoenn') ||
+          speciesName.includes('-sinnoh') ||
+          speciesName.includes('-unova') ||
+          speciesName.includes('-kalos') ||
+          speciesName.includes('-alola') ||
+          speciesName.includes('-partner') ||
+          speciesName.includes('-world');
+        
+        if (!isCosmeticForm && !visited.has(preEvo.preEvolutionPokemonId)) {
+          visited.add(preEvo.preEvolutionPokemonId);
+          result.push(preEvo.preEvolutionPokemonId);
+          queue.push(preEvo.preEvolutionPokemonId);
         }
       }
-    };
+    }
     
-    // Get all pre-evolutions (going backwards in the chain)
-    await getPreEvolutions(speciesId);
-    
-    // Filter to only include default forms (or forms without '-' in species name)
-    // This prevents including all cosmetic Pikachu forms when checking Raichu's moves
-    const allPokemonInChain = await db.select({
-      id: pokemon.id,
-      speciesName: pokemon.speciesName
-    })
-    .from(pokemon)
-    .where(inArray(pokemon.id, Array.from(chain)));
-    
-    // Keep only default forms or forms that don't have cosmetic variants
-    const defaultFormIds = allPokemonInChain
-      .filter(p => 
-        p.speciesName.includes('default') || 
-        !p.speciesName.match(/-(?:rock-star|belle|pop-star|phd|libre|original-cap|hoenn-cap|sinnoh-cap|unova-cap|kalos-cap|alola-cap|partner-cap|world-cap)/)
-      )
-      .map(p => p.id);
-    
-    return defaultFormIds;
+    return result;
   }
 
   async getFullEvolutionFamily(speciesId: number): Promise<number[]> {
