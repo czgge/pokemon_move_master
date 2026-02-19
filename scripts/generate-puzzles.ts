@@ -174,93 +174,64 @@ async function generatePuzzles() {
     }> = [];
     
     const MAX_PUZZLES = 10000;
-    const pokemonPuzzleCount = new Map<number, number>();
-    
     let totalChecked = 0;
     
-    // Sort Pokemon by ndex to process in order, but prioritize those without puzzles
-    const processPokemon = () => {
-      return [...filteredPokemon].sort((a, b) => {
-        const countA = pokemonPuzzleCount.get(a.id) || 0;
-        const countB = pokemonPuzzleCount.get(b.id) || 0;
-        
-        // First, prioritize Pokemon with no puzzles
-        if (countA === 0 && countB > 0) return -1;
-        if (countB === 0 && countA > 0) return 1;
-        
-        // Then by count (fewer puzzles first)
-        if (countA !== countB) return countA - countB;
-        
-        // Finally by ndex
-        return a.ndexId - b.ndexId;
-      });
-    };
+    // Process each Pokemon once, checking many combinations
+    console.log("Processing Pokemon to find unique puzzles...");
     
-    // Keep generating until we hit the limit
-    let round = 0;
-    while (puzzles.length < MAX_PUZZLES && round < 20) {
-      round++;
-      const roundStart = puzzles.length;
+    for (let i = 0; i < filteredPokemon.length && puzzles.length < MAX_PUZZLES; i++) {
+      const pkmn = filteredPokemon[i];
+      const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
       
-      console.log(`\nRound ${round}: ${puzzles.length}/${MAX_PUZZLES} puzzles`);
+      if (moveIds.length < 4) {
+        console.log(`  ⚠ ${pkmn.name} has only ${moveIds.length} moves, skipping`);
+        continue;
+      }
       
-      const sortedPokemon = processPokemon();
+      let foundForPokemon = 0;
+      const maxPerPokemon = 50; // Allow up to 50 puzzles per Pokemon
       
-      for (let i = 0; i < sortedPokemon.length && puzzles.length < MAX_PUZZLES; i++) {
-        const pkmn = sortedPokemon[i];
-        const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+      // Calculate total possible combinations for this Pokemon
+      const totalPossible = (moveIds.length * (moveIds.length - 1) * (moveIds.length - 2) * (moveIds.length - 3)) / 24;
+      
+      // Check many combinations (up to 50,000 per Pokemon)
+      const maxCombosToCheck = Math.min(50000, totalPossible);
+      
+      // Generate and check combinations
+      for (const combo of generateLimitedCombinations(moveIds, 4, maxCombosToCheck)) {
+        if (foundForPokemon >= maxPerPokemon) break;
+        if (puzzles.length >= MAX_PUZZLES) break;
         
-        if (moveIds.length < 4) continue;
+        totalChecked++;
         
-        const currentCount = pokemonPuzzleCount.get(pkmn.id) || 0;
+        // Check if unique
+        const isUnique = isUniqueMoveset(combo, pkmn.id, allPokemonMoves);
         
-        // Limit combinations to check per Pokemon per round
-        const maxCombosToCheck = currentCount === 0 ? 500 : 200;
-        
-        let foundThisRound = 0;
-        const maxPerRound = currentCount === 0 ? 5 : 2; // More for Pokemon without puzzles
-        
-        // Generate and check combinations
-        for (const combo of generateLimitedCombinations(moveIds, 4, maxCombosToCheck)) {
-          if (foundThisRound >= maxPerRound) break;
-          if (puzzles.length >= MAX_PUZZLES) break;
+        if (isUnique) {
+          const comboKey = combo.join(',');
           
-          totalChecked++;
+          // Check if we already have this exact combination
+          if (puzzles.some(p => p.moveIds === comboKey)) continue;
           
-          // Check if unique
-          const isUnique = isUniqueMoveset(combo, pkmn.id, allPokemonMoves);
+          puzzles.push({
+            pokemonId: pkmn.id,
+            pokemonName: pkmn.name,
+            ndexId: pkmn.ndexId,
+            moveIds: comboKey,
+            generation: gen
+          });
           
-          if (isUnique) {
-            const comboKey = combo.join(',');
-            
-            // Check if we already have this exact combination
-            if (puzzles.some(p => p.moveIds === comboKey)) continue;
-            
-            puzzles.push({
-              pokemonId: pkmn.id,
-              pokemonName: pkmn.name,
-              ndexId: pkmn.ndexId,
-              moveIds: comboKey,
-              generation: gen
-            });
-            
-            pokemonPuzzleCount.set(pkmn.id, currentCount + 1);
-            foundThisRound++;
-          }
-          
-          // Progress update
-          if (totalChecked % 5000 === 0) {
-            console.log(`  Checked ${totalChecked} combos, found ${puzzles.length} unique`);
-          }
+          foundForPokemon++;
+        }
+        
+        // Progress update
+        if (totalChecked % 10000 === 0) {
+          console.log(`  [${i + 1}/${filteredPokemon.length}] Checked ${totalChecked} combos, found ${puzzles.length} unique`);
         }
       }
       
-      const addedThisRound = puzzles.length - roundStart;
-      console.log(`  Round ${round} complete: Added ${addedThisRound} puzzles (total: ${puzzles.length})`);
-      
-      if (addedThisRound === 0) {
-        console.log(`  No new puzzles found, stopping`);
-        break;
+      if (foundForPokemon > 0) {
+        console.log(`  ✓ ${pkmn.name}: Found ${foundForPokemon} unique puzzles`);
       }
     }
     
