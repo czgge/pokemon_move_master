@@ -250,7 +250,7 @@ export default function Pokedex() {
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="absolute left-0 right-0 top-full mt-1 bg-white border-2 border-border rounded-lg shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto"
+                      className="absolute left-0 right-0 top-full mt-1 bg-card border-2 border-border rounded-lg shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto"
                     >
                       {pokemonSuggestions.map((pkmn: any) => (
                         <button
@@ -294,7 +294,7 @@ export default function Pokedex() {
                 🎮 Generation Filter
               </label>
               <select 
-                className="w-full bg-white border-2 border-border rounded px-3 py-2 font-mono text-sm focus:outline-none focus:border-primary"
+                className="w-full bg-card border-2 border-border rounded px-3 py-2 font-mono text-sm focus:outline-none focus:border-primary"
                 value={maxGen}
                 onChange={(e) => { setMaxGen(parseInt(e.target.value)); setPage(1); }}
               >
@@ -327,7 +327,7 @@ export default function Pokedex() {
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="absolute left-0 right-0 top-full mt-1 bg-white border-2 border-border rounded-lg shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto"
+                      className="absolute left-0 right-0 top-full mt-1 bg-card border-2 border-border rounded-lg shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto"
                     >
                       {moveSuggestions.map((move: any) => (
                         <button
@@ -377,7 +377,9 @@ export default function Pokedex() {
                   className="group hover:border-primary transition-colors cursor-pointer"
                   onClick={() => {
                     setSelectedPokemon(pokemon);
-                    setSelectedGen(pokemon.generationId);
+                    // Use maxGen if Pokemon exists in that gen, otherwise use its introduction gen
+                    const targetGen = pokemon.generationId <= maxGen ? maxGen : pokemon.generationId;
+                    setSelectedGen(targetGen);
                     setPokemonMoveSearch(""); // Reset search when opening new Pokemon
                   }}
                 >
@@ -456,7 +458,7 @@ export default function Pokedex() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden bg-white rounded-lg pixel-border p-4 lg:p-6 flex flex-col"
+              className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden bg-card rounded-lg pixel-border p-4 lg:p-6 flex flex-col"
               onClick={e => e.stopPropagation()}
             >
               <button 
@@ -554,7 +556,7 @@ export default function Pokedex() {
                             "py-1.5 lg:py-2 px-1 lg:px-2 rounded font-retro text-[10px] lg:text-xs border-2 transition-colors",
                             selectedGen === gen 
                               ? "bg-primary border-primary text-white" 
-                              : "bg-white border-border text-foreground hover:border-primary"
+                              : "bg-card border-border text-foreground hover:border-primary"
                           )}
                         >
                           GEN {gen}
