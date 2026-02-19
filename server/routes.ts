@@ -1597,12 +1597,39 @@ export async function registerRoutes(
             }
             
             const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-            console.log(`\n✅ Gen ${targetGen} COMPLETE: ${puzzles.length.toLocaleString()} puzzles in ${totalTime}m`);
+            console.log(`\n✅ Gen ${targetGen} COMPLETE: ${puzzles.length.toLocaleString()} puzzles generated in ${totalTime}m`);
             
-            // Save
+            // POST-GENERATION VALIDATION: Remove puzzles with invalid moves
+            console.log(`\n🔍 Validating puzzles...`);
+            const validPuzzles = [];
+            let invalidCount = 0;
+            
+            for (const puzzle of puzzles) {
+              const moveIds = puzzle.moveIds.split(',').map(id => parseInt(id));
+              
+              // Get moves that this Pokemon can actually learn (using game logic)
+              const actualMoves = await storage.getMovesForPokemon(puzzle.pokemonId, targetGen);
+              const actualMoveIds = new Set(actualMoves.map(m => m.id));
+              
+              // Check if Pokemon can learn ALL 4 moves
+              const canLearnAll = moveIds.every(moveId => actualMoveIds.has(moveId));
+              
+              if (canLearnAll) {
+                validPuzzles.push(puzzle);
+              } else {
+                invalidCount++;
+                if (invalidCount <= 5) {
+                  console.log(`  ❌ Invalid: ${puzzle.pokemonName} with moves ${puzzle.moveIds}`);
+                }
+              }
+            }
+            
+            console.log(`✓ Validation complete: ${validPuzzles.length} valid, ${invalidCount} invalid (removed)`);
+            
+            // Save only valid puzzles
             const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${targetGen}-complete.csv`);
             const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-            const csvRows = puzzles.map(p => 
+            const csvRows = validPuzzles.map(p => 
               `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
             ).join('\n');
             
@@ -1610,7 +1637,7 @@ export async function registerRoutes(
             fs.writeFileSync(csvPath, csvHeader + csvRows);
             
             const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
-            console.log(`✓ Saved to ${csvPath} (${fileSize} MB)`);
+            console.log(`✓ Saved ${validPuzzles.length} valid puzzles to ${csvPath} (${fileSize} MB)`);
             
           } catch (error) {
             console.error(`❌ Error in Gen ${targetGen}:`, error);
