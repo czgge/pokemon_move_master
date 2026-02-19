@@ -190,7 +190,13 @@ export default function Admin() {
   };
 
   const handleDownloadPuzzle = (gen: number) => {
-    window.open(`/api/admin/download-puzzle/${gen}`, '_blank');
+    // Create a temporary link element to force download
+    const link = document.createElement('a');
+    link.href = `/api/admin/download-puzzle/${gen}`;
+    link.download = `puzzles-gen${gen}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
