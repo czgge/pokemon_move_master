@@ -72,24 +72,19 @@ async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<nu
 }
 
 // Generate combinations of 4 moves from a list (limited version)
-function* generateLimitedCombinations(moves: number[], size: number, maxCombos: number): Generator<number[]> {
+function* generateLimitedCombinations(moves: number[], maxCombos: number): Generator<number[]> {
   let count = 0;
+  const n = moves.length;
   
-  if (size === 0) {
-    yield [];
-    return;
-  }
-  
-  for (let i = 0; i <= moves.length - size; i++) {
-    if (count >= maxCombos) break;
-    
-    const move = moves[i];
-    const remaining = moves.slice(i + 1);
-    
-    for (const combo of generateLimitedCombinations(remaining, size - 1, maxCombos - count)) {
-      if (count >= maxCombos) break;
-      yield [move, ...combo];
-      count++;
+  // Generate all 4-move combinations using nested loops
+  for (let i = 0; i < n - 3 && count < maxCombos; i++) {
+    for (let j = i + 1; j < n - 2 && count < maxCombos; j++) {
+      for (let k = j + 1; k < n - 1 && count < maxCombos; k++) {
+        for (let l = k + 1; l < n && count < maxCombos; l++) {
+          yield [moves[i], moves[j], moves[k], moves[l]];
+          count++;
+        }
+      }
     }
   }
 }
@@ -198,7 +193,7 @@ async function generatePuzzles() {
       const maxCombosToCheck = Math.min(50000, totalPossible);
       
       // Generate and check combinations
-      for (const combo of generateLimitedCombinations(moveIds, 4, maxCombosToCheck)) {
+      for (const combo of generateLimitedCombinations(moveIds, maxCombosToCheck)) {
         if (foundForPokemon >= maxPerPokemon) break;
         if (puzzles.length >= MAX_PUZZLES) break;
         
