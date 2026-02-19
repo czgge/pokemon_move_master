@@ -1413,11 +1413,27 @@ export async function registerRoutes(
     }
   });
 
+  // Global flag to stop generation
+  let stopGenerationFlag = false;
+
+  // ADMIN ENDPOINT - Stop ongoing generation
+  app.post("/api/admin/stop-generation", async (req, res) => {
+    stopGenerationFlag = true;
+    console.log("🛑 STOP signal received - generation will stop at next checkpoint");
+    res.json({ 
+      success: true, 
+      message: "Stop signal inviato. La generazione si fermerà al prossimo checkpoint." 
+    });
+  });
+
   // ADMIN ENDPOINT - Generate COMPLETE puzzle files (ALL combinations)
   app.post("/api/admin/generate-complete-puzzles", async (req, res) => {
     try {
       const { generation } = req.body;
       const gen = generation || null;
+      
+      // Reset stop flag when starting new generation
+      stopGenerationFlag = false;
       
       if (gen) {
         console.log(`Starting COMPLETE puzzle generation for Gen ${gen}...`);
@@ -1438,6 +1454,12 @@ export async function registerRoutes(
         const generations = gen ? [gen] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
         
         for (const targetGen of generations) {
+          // Check stop flag
+          if (stopGenerationFlag) {
+            console.log(`\n🛑 Generation STOPPED by user at Gen ${targetGen}`);
+            stopGenerationFlag = false;
+            return;
+          }
           try {
             console.log(`\n${'='.repeat(60)}`);
             console.log(`COMPLETE GENERATION - GEN ${targetGen}`);
@@ -1518,6 +1540,14 @@ export async function registerRoutes(
             fs.writeFileSync(csvPath, csvHeader);
             
             for (let i = 0; i < filtered.length; i++) {
+              // Check stop flag every Pokemon
+              if (stopGenerationFlag) {
+                console.log(`\n🛑 Generation STOPPED by user at Pokemon ${i}/${filtered.length}`);
+                console.log(`💾 Partial results saved to ${csvPath}`);
+                stopGenerationFlag = false;
+                return;
+              }
+              
               const pkmn = filtered[i];
               const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
               
