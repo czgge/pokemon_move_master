@@ -1475,7 +1475,12 @@ export async function registerRoutes(
             // Pre-load all moves
             console.log("Pre-loading moves...");
             const allPokemonMoves = new Map<number, Set<number>>();
-            const validVersionIds = await getValidVersionIds(targetGen);
+            
+            // Get valid version IDs for this generation
+            const validVersions = await db.select({ id: versions.id })
+              .from(versions)
+              .where(lte(versions.generationId, targetGen));
+            const validVersionIds = validVersions.map(v => v.id);
             
             for (let i = 0; i < filtered.length; i++) {
               const pkmn = filtered[i];
