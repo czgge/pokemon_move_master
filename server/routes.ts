@@ -11,6 +11,55 @@ import { db } from "./db";
 import { pokemon, moves, pokemonMoves, versions, evolutions } from "../shared/schema";
 import { eq, lte, sql, and, inArray } from "drizzle-orm";
 
+// Cache for pre-generated puzzles
+const puzzleCache = new Map<number, Array<{
+  pokemonId: number;
+  pokemonName: string;
+  ndexId: number;
+  moveIds: number[];
+}>>();
+
+// Load puzzles from CSV for a specific generation
+async function loadPuzzlesForGen(gen: number) {
+  if (puzzleCache.has(gen)) {
+    return puzzleCache.get(gen)!;
+  }
+  
+  const csvPath = path.join(process.cwd(), `data/puzzles-gen${gen}.csv`);
+  
+  // Check if file exists
+  if (!fs.existsSync(csvPath)) {
+    console.log(`Puzzle file not found for gen ${gen}, will generate on-the-fly`);
+    return [];
+  }
+  
+  return new Promise<Array<{
+    pokemonId: number;
+    pokemonName: string;
+    ndexId: number;
+    moveIds: number[];
+  }>>((resolve, reject) => {
+    const puzzles: Array<any> = [];
+    
+    fs.createReadStream(csvPath)
+      .pipe(csv())
+      .on('data', (row) => {
+        puzzles.push({
+          pokemonId: parseInt(row.pokemonId),
+          pokemonName: row.pokemonName,
+          ndexId: parseInt(row.ndexId),
+          moveIds: row.moveIds.split(',').map((id: string) => parseInt(id.trim()))
+        });
+      })
+      .on('end', () => {
+        puzzleCache.set(gen, puzzles);
+        console.log(`Loaded ${puzzles.length} puzzles for gen ${gen}`);
+        resolve(puzzles);
+      })
+      .on('error', reject);
+  });
+}
+
 function createRoundToken(data: any) {
   return Buffer.from(JSON.stringify(data)).toString('base64');
 }
@@ -34,39 +83,90 @@ export async function registerRoutes(
     try {
       const { maxGen, seenMovesets = [] } = api.game.start.input.parse(req.body);
       
+      // Try to load pre-generated puzzles first
+      const puzzles = await loadPuzzlesForGen(maxGen);
+      
+      if (puzzles.length > 0) {
+        // Use pre-generated puzzles (FAST PATH)
+        let attempts = 0;
+        while (attempts < 50) {
+          attempts++;
+          
+          // Pick a random puzzle
+          const puzzle = puzzles[Math.floor(Math.random() * puzzles.length)];
+          
+          // Get move details
+          const moveDetails = await db.select({
+            id: moves.id,
+            name: moves.name,
+            type: moves.type,
+            power: moves.power,
+            pp: moves.pp,
+            accuracy: moves.accuracy
+          })
+          .from(moves)
+          .where(inArray(moves.id, puzzle.moveIds));
+          
+          // Create moveset key to check if already seen
+          const movesetKey = moveDetails.map(m => m.name).sort().join('|');
+          
+          if (seenMovesets.includes(movesetKey)) {
+            continue;
+          }
+          
+          // Found a valid puzzle!
+          const roundId = Math.random().toString(36).substring(7);
+          const roundData = {
+            roundId,
+            correctPokemonId: puzzle.pokemonId,
+            moves: moveDetails.map(m => m.name),
+            gen: maxGen
+          };
+          
+          const response = {
+            roundId,
+            moves: moveDetails.map(m => ({
+              name: m.name,
+              type: m.type,
+              power: m.power,
+              pp: m.pp,
+              accuracy: m.accuracy
+            })),
+            generation: maxGen,
+            roundToken: createRoundToken(roundData)
+          };
+          
+          return res.json(response);
+        }
+      }
+      
+      // FALLBACK: Generate on-the-fly (SLOW PATH)
+      console.log(`No pre-generated puzzles for gen ${maxGen}, generating on-the-fly...`);
+      
       let attempts = 0;
       let roundData = null;
       let response = null;
 
-      // Try to find a valid unique moveset up to 100 times (reduced from 500)
-      while (attempts < 100) {
+      while (attempts < 50) {
         attempts++;
         
-        // 1. Get a random Pokemon
         const [targetPokemon] = await storage.getRandomPokemon(maxGen, 1);
         if (!targetPokemon) continue;
 
-        // 2. Get valid moves
         const validMoves = await storage.getMovesForPokemon(targetPokemon.id, maxGen);
         if (validMoves.length < 4) continue;
         
-        // 3. Select 4 random unique moves
-        // Try only 3 different move combinations per pokemon (reduced from 10)
         for (let moveSetAttempt = 0; moveSetAttempt < 3; moveSetAttempt++) {
           const shuffledMoves = validMoves.sort(() => 0.5 - Math.random());
           const selectedMoves = shuffledMoves.slice(0, 4);
           const moveIds = selectedMoves.map(m => m.id);
           
-          // Create a unique identifier for this moveset (sorted move names)
           const movesetKey = selectedMoves.map(m => m.name).sort().join('|');
           
-          // Check if this exact combination was already seen in this game session
           if (seenMovesets.includes(movesetKey)) {
-            console.log(`Skipping already seen moveset: ${movesetKey}`);
             continue;
           }
 
-          // 4. Check Uniqueness (against other Pokemon)
           const isUnique = await storage.checkUniqueMoveset(moveIds, targetPokemon.id, maxGen);
           
           if (isUnique) {
@@ -1080,6 +1180,227 @@ export async function registerRoutes(
       res.status(500).json({ 
         success: false, 
         message: "Errore nella creazione degli indici", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ADMIN ENDPOINT - Generate puzzle files
+  app.post("/api/admin/generate-puzzles", async (req, res) => {
+    try {
+      const { generation } = req.body;
+      const gen = generation || 1;
+      
+      console.log(`Starting puzzle generation for Gen ${gen}...`);
+      
+      // This will run in the background
+      res.json({ 
+        success: true, 
+        message: `Generazione puzzle per Gen ${gen} avviata! Controlla i log del server per il progresso. Ci vorranno alcuni minuti.` 
+      });
+      
+      // Run generation in background
+      (async () => {
+        try {
+          const puzzles: Array<{
+            pokemonId: number;
+            pokemonName: string;
+            ndexId: number;
+            moveIds: string;
+            generation: number;
+          }> = [];
+          
+          // Get all Pokemon for this generation
+          const allPokemon = await db.select({
+            id: pokemon.id,
+            name: pokemon.name,
+            ndexId: pokemon.ndexId,
+            speciesName: pokemon.speciesName
+          })
+          .from(pokemon)
+          .where(lte(pokemon.generationId, gen));
+          
+          // Filter cosmetic forms
+          const filtered = allPokemon.filter(p => {
+            const name = p.speciesName;
+            return !name.includes('-cap') &&
+                   !name.includes('-original') &&
+                   !name.includes('-hoenn') &&
+                   !name.includes('-sinnoh') &&
+                   !name.includes('-unova') &&
+                   !name.includes('-kalos') &&
+                   !name.includes('-alola') &&
+                   !name.includes('-partner') &&
+                   !name.includes('-world') &&
+                   !name.includes('-gigantamax') &&
+                   !name.includes('-totem');
+          });
+          
+          console.log(`Found ${filtered.length} Pokemon for Gen ${gen}`);
+          
+          let processed = 0;
+          for (const pkmn of filtered) {
+            const validMoves = await storage.getMovesForPokemon(pkmn.id, gen);
+            
+            if (validMoves.length >= 4) {
+              // Try to find up to 3 unique puzzles for this Pokemon
+              for (let attempt = 0; attempt < 10 && puzzles.filter(p => p.pokemonId === pkmn.id).length < 3; attempt++) {
+                const shuffled = validMoves.sort(() => 0.5 - Math.random());
+                const selected = shuffled.slice(0, 4);
+                const moveIds = selected.map(m => m.id);
+                
+                const isUnique = await storage.checkUniqueMoveset(moveIds, pkmn.id, gen);
+                
+                if (isUnique) {
+                  puzzles.push({
+                    pokemonId: pkmn.id,
+                    pokemonName: pkmn.name,
+                    ndexId: pkmn.ndexId,
+                    moveIds: moveIds.join(','),
+                    generation: gen
+                  });
+                }
+              }
+            }
+            
+            processed++;
+            if (processed % 50 === 0) {
+              console.log(`Processed ${processed}/${filtered.length} Pokemon, found ${puzzles.length} puzzles`);
+            }
+          }
+          
+          console.log(`Generated ${puzzles.length} puzzles for Gen ${gen}`);
+          
+          // Write to CSV
+          const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
+          const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+          const csvRows = puzzles.map(p => 
+            `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
+          ).join('\n');
+          
+          fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+          fs.writeFileSync(csvPath, csvHeader + csvRows);
+          
+          console.log(`✅ Saved ${puzzles.length} puzzles to ${csvPath}`);
+        } catch (error) {
+          console.error(`Error generating puzzles for Gen ${gen}:`, error);
+        }
+      })();
+      
+    } catch (error) {
+      console.error("Error starting puzzle generation:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nell'avvio della generazione puzzle", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ADMIN ENDPOINT - Generate ALL puzzle files (Gen 1-9)
+  app.post("/api/admin/generate-all-puzzles", async (req, res) => {
+    try {
+      console.log("Starting puzzle generation for ALL generations (1-9)...");
+      
+      res.json({ 
+        success: true, 
+        message: "Generazione puzzle per TUTTE le generazioni (1-9) avviata! Controlla i log del server. Ci vorranno 20-60 minuti." 
+      });
+      
+      // Run generation in background
+      (async () => {
+        for (let gen = 1; gen <= 9; gen++) {
+          try {
+            console.log(`\n========== Starting Gen ${gen} ==========`);
+            const puzzles: Array<{
+              pokemonId: number;
+              pokemonName: string;
+              ndexId: number;
+              moveIds: string;
+              generation: number;
+            }> = [];
+            
+            const allPokemon = await db.select({
+              id: pokemon.id,
+              name: pokemon.name,
+              ndexId: pokemon.ndexId,
+              speciesName: pokemon.speciesName
+            })
+            .from(pokemon)
+            .where(lte(pokemon.generationId, gen));
+            
+            const filtered = allPokemon.filter(p => {
+              const name = p.speciesName;
+              return !name.includes('-cap') &&
+                     !name.includes('-original') &&
+                     !name.includes('-hoenn') &&
+                     !name.includes('-sinnoh') &&
+                     !name.includes('-unova') &&
+                     !name.includes('-kalos') &&
+                     !name.includes('-alola') &&
+                     !name.includes('-partner') &&
+                     !name.includes('-world') &&
+                     !name.includes('-gigantamax') &&
+                     !name.includes('-totem');
+            });
+            
+            console.log(`Found ${filtered.length} Pokemon for Gen ${gen}`);
+            
+            let processed = 0;
+            for (const pkmn of filtered) {
+              const validMoves = await storage.getMovesForPokemon(pkmn.id, gen);
+              
+              if (validMoves.length >= 4) {
+                for (let attempt = 0; attempt < 10 && puzzles.filter(p => p.pokemonId === pkmn.id).length < 3; attempt++) {
+                  const shuffled = validMoves.sort(() => 0.5 - Math.random());
+                  const selected = shuffled.slice(0, 4);
+                  const moveIds = selected.map(m => m.id);
+                  
+                  const isUnique = await storage.checkUniqueMoveset(moveIds, pkmn.id, gen);
+                  
+                  if (isUnique) {
+                    puzzles.push({
+                      pokemonId: pkmn.id,
+                      pokemonName: pkmn.name,
+                      ndexId: pkmn.ndexId,
+                      moveIds: moveIds.join(','),
+                      generation: gen
+                    });
+                  }
+                }
+              }
+              
+              processed++;
+              if (processed % 100 === 0) {
+                console.log(`[Gen ${gen}] Processed ${processed}/${filtered.length} Pokemon, found ${puzzles.length} puzzles`);
+              }
+            }
+            
+            console.log(`Generated ${puzzles.length} puzzles for Gen ${gen}`);
+            
+            const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
+            const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+            const csvRows = puzzles.map(p => 
+              `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
+            ).join('\n');
+            
+            fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+            fs.writeFileSync(csvPath, csvHeader + csvRows);
+            
+            console.log(`✅ Gen ${gen} complete: Saved ${puzzles.length} puzzles to ${csvPath}`);
+          } catch (error) {
+            console.error(`❌ Error generating puzzles for Gen ${gen}:`, error);
+          }
+        }
+        
+        console.log("\n🎉 ALL GENERATIONS COMPLETE! Puzzle files generated for Gen 1-9.");
+      })();
+      
+    } catch (error) {
+      console.error("Error starting puzzle generation:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nell'avvio della generazione puzzle", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }
