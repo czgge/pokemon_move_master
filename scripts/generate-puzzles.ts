@@ -71,15 +71,35 @@ async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<nu
   return pokemonMovesList.map(m => m.moveId);
 }
 
-// Check if a moveset is unique for a Pokemon
-async function isUniqueMoveset(
-  moveIds: number[], 
-  pokemonId: number, 
-  maxGen: number,
-  allPokemonMoves: Map<number, Set<number>>
-): Promise<boolean> {
-  const targetMoveSet = new Set(moveIds);
+// Generate combinations of 4 moves from a list (limited version)
+function* generateLimitedCombinations(moves: number[], size: number, maxCombos: number): Generator<number[]> {
+  let count = 0;
   
+  if (size === 0) {
+    yield [];
+    return;
+  }
+  
+  for (let i = 0; i <= moves.length - size; i++) {
+    if (count >= maxCombos) break;
+    
+    const move = moves[i];
+    const remaining = moves.slice(i + 1);
+    
+    for (const combo of generateLimitedCombinations(remaining, size - 1, maxCombos - count)) {
+      if (count >= maxCombos) break;
+      yield [move, ...combo];
+      count++;
+    }
+  }
+}
+
+// Check if a moveset is unique (no other Pokemon can learn all 4 moves)
+function isUniqueMoveset(
+  moveIds: number[],
+  pokemonId: number,
+  allPokemonMoves: Map<number, Set<number>>
+): boolean {
   // Check all other Pokemon
   for (const [otherPokemonId, otherMoves] of allPokemonMoves.entries()) {
     if (otherPokemonId === pokemonId) continue;
@@ -144,7 +164,7 @@ async function generatePuzzles() {
       }
     }
     
-    console.log("Generating unique puzzles...");
+    console.log("Generating unique puzzles (up to 10,000)...");
     const puzzles: Array<{
       pokemonId: number;
       pokemonName: string;
@@ -153,86 +173,69 @@ async function generatePuzzles() {
       generation: number;
     }> = [];
     
-    const MIN_PUZZLES_PER_GEN = 10000;
+    const MAX_PUZZLES = 10000;
     const pokemonPuzzleCount = new Map<number, number>();
-    const pokemonHasUnique = new Set<number>();
     
-    // Phase 1: Ensure every Pokemon gets at least 1 unique puzzle
-    console.log("Phase 1: Ensuring all Pokemon are represented...");
-    const shuffledPokemon = [...filteredPokemon].sort(() => 0.5 - Math.random());
+    let totalChecked = 0;
     
-    for (const pkmn of shuffledPokemon) {
-      const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
-      if (moveIds.length < 4) continue;
-      
-      // Try to find at least 1 unique combination
-      const attempts = 20;
-      for (let i = 0; i < attempts; i++) {
-        const shuffled = [...moveIds].sort(() => 0.5 - Math.random());
-        const selectedMoves = shuffled.slice(0, 4);
-        const comboKey = selectedMoves.sort((a, b) => a - b).join(',');
-        
-        if (puzzles.some(p => p.moveIds === comboKey)) continue;
-        
-        const isUnique = await isUniqueMoveset(selectedMoves, pkmn.id, gen, allPokemonMoves);
-        
-        if (isUnique) {
-          puzzles.push({
-            pokemonId: pkmn.id,
-            pokemonName: pkmn.name,
-            ndexId: pkmn.ndexId,
-            moveIds: comboKey,
-            generation: gen
-          });
-          
-          pokemonPuzzleCount.set(pkmn.id, 1);
-          pokemonHasUnique.add(pkmn.id);
-          break;
-        }
-      }
-      
-      if ((shuffledPokemon.indexOf(pkmn) + 1) % 50 === 0) {
-        console.log(`  Processed ${shuffledPokemon.indexOf(pkmn) + 1}/${shuffledPokemon.length} Pokemon, found ${puzzles.length} puzzles`);
-      }
-    }
-    
-    console.log(`Phase 1 complete: ${puzzles.length} puzzles (${pokemonHasUnique.size} Pokemon represented)`);
-    
-    // Phase 2: Fill up to MIN_PUZZLES_PER_GEN, prioritizing Pokemon with fewer puzzles
-    console.log(`Phase 2: Filling to ${MIN_PUZZLES_PER_GEN} puzzles...`);
-    let rounds = 0;
-    const maxRounds = 50;
-    
-    while (puzzles.length < MIN_PUZZLES_PER_GEN && rounds < maxRounds) {
-      rounds++;
-      
-      // Sort Pokemon by puzzle count (ascending) to prioritize those with fewer puzzles
-      const sortedPokemon = [...filteredPokemon].sort((a, b) => {
+    // Sort Pokemon by ndex to process in order, but prioritize those without puzzles
+    const processPokemon = () => {
+      return [...filteredPokemon].sort((a, b) => {
         const countA = pokemonPuzzleCount.get(a.id) || 0;
         const countB = pokemonPuzzleCount.get(b.id) || 0;
-        return countA - countB;
-      });
-      
-      let addedThisRound = 0;
-      
-      for (const pkmn of sortedPokemon) {
-        if (puzzles.length >= MIN_PUZZLES_PER_GEN) break;
         
+        // First, prioritize Pokemon with no puzzles
+        if (countA === 0 && countB > 0) return -1;
+        if (countB === 0 && countA > 0) return 1;
+        
+        // Then by count (fewer puzzles first)
+        if (countA !== countB) return countA - countB;
+        
+        // Finally by ndex
+        return a.ndexId - b.ndexId;
+      });
+    };
+    
+    // Keep generating until we hit the limit
+    let round = 0;
+    while (puzzles.length < MAX_PUZZLES && round < 20) {
+      round++;
+      const roundStart = puzzles.length;
+      
+      console.log(`\nRound ${round}: ${puzzles.length}/${MAX_PUZZLES} puzzles`);
+      
+      const sortedPokemon = processPokemon();
+      
+      for (let i = 0; i < sortedPokemon.length && puzzles.length < MAX_PUZZLES; i++) {
+        const pkmn = sortedPokemon[i];
         const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+        
         if (moveIds.length < 4) continue;
         
-        // Try to find a new unique combination
-        const attempts = 15;
-        for (let i = 0; i < attempts; i++) {
-          const shuffled = [...moveIds].sort(() => 0.5 - Math.random());
-          const selectedMoves = shuffled.slice(0, 4);
-          const comboKey = selectedMoves.sort((a, b) => a - b).join(',');
+        const currentCount = pokemonPuzzleCount.get(pkmn.id) || 0;
+        
+        // Limit combinations to check per Pokemon per round
+        const maxCombosToCheck = currentCount === 0 ? 500 : 200;
+        
+        let foundThisRound = 0;
+        const maxPerRound = currentCount === 0 ? 5 : 2; // More for Pokemon without puzzles
+        
+        // Generate and check combinations
+        for (const combo of generateLimitedCombinations(moveIds, 4, maxCombosToCheck)) {
+          if (foundThisRound >= maxPerRound) break;
+          if (puzzles.length >= MAX_PUZZLES) break;
           
-          if (puzzles.some(p => p.moveIds === comboKey)) continue;
+          totalChecked++;
           
-          const isUnique = await isUniqueMoveset(selectedMoves, pkmn.id, gen, allPokemonMoves);
+          // Check if unique
+          const isUnique = isUniqueMoveset(combo, pkmn.id, allPokemonMoves);
           
           if (isUnique) {
+            const comboKey = combo.join(',');
+            
+            // Check if we already have this exact combination
+            if (puzzles.some(p => p.moveIds === comboKey)) continue;
+            
             puzzles.push({
               pokemonId: pkmn.id,
               pokemonName: pkmn.name,
@@ -241,18 +244,22 @@ async function generatePuzzles() {
               generation: gen
             });
             
-            const currentCount = pokemonPuzzleCount.get(pkmn.id) || 0;
             pokemonPuzzleCount.set(pkmn.id, currentCount + 1);
-            addedThisRound++;
-            break;
+            foundThisRound++;
+          }
+          
+          // Progress update
+          if (totalChecked % 5000 === 0) {
+            console.log(`  Checked ${totalChecked} combos, found ${puzzles.length} unique`);
           }
         }
       }
       
-      console.log(`  Round ${rounds}: Added ${addedThisRound} puzzles (total: ${puzzles.length}/${MIN_PUZZLES_PER_GEN})`);
+      const addedThisRound = puzzles.length - roundStart;
+      console.log(`  Round ${round} complete: Added ${addedThisRound} puzzles (total: ${puzzles.length})`);
       
       if (addedThisRound === 0) {
-        console.log(`  No new puzzles found, stopping early`);
+        console.log(`  No new puzzles found, stopping`);
         break;
       }
     }
