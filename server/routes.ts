@@ -1540,6 +1540,13 @@ export async function registerRoutes(
               for (const combo of combinations) {
                 totalCombos++;
                 
+                // VALIDATION: Check if Pokemon can actually learn ALL 4 moves
+                // This filters out bad data from the CSV
+                const pokemonMoveSet = allPokemonMoves.get(pkmn.id);
+                if (!pokemonMoveSet || !combo.every(m => pokemonMoveSet.has(m))) {
+                  continue; // Skip this combo, Pokemon can't learn all these moves
+                }
+                
                 // Check diversity: combo must differ by at least 2 moves from all existing puzzles of same Pokemon
                 let isDiverse = true;
                 for (const existingCombo of pokemonPuzzles) {
