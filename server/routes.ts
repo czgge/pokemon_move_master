@@ -738,7 +738,22 @@ export async function registerRoutes(
         .from(pokemon)
         .where(and(
           sql`lower(${pokemon.name}) LIKE ${`%${query.toLowerCase()}%`}`,
-          lte(pokemon.generationId, gen)
+          lte(pokemon.generationId, gen),
+          // Filter out alternative forms that shouldn't appear in search
+          sql`${pokemon.speciesName} NOT LIKE '%-sunny'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-rainy'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-snowy'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-cap'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-original'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-hoenn'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-sinnoh'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-unova'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-kalos'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-alola'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-partner'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-world'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-gigantamax'`,
+          sql`${pokemon.speciesName} NOT LIKE '%-totem'`
         ))
         .limit(10);
       res.json(results);
