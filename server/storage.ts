@@ -124,7 +124,7 @@ class DatabaseStorage implements IStorage {
   }
 
   async searchPokemonForGame(query: string, maxGen: number): Promise<Pokemon[]> {
-    // Search and deduplicate cosmetic forms only
+    // Search and deduplicate by ndexId (keep only one form per Pokemon)
     try {
       console.log(`[searchPokemonForGame] query="${query}", maxGen=${maxGen}`);
       
@@ -136,6 +136,7 @@ class DatabaseStorage implements IStorage {
           // Search in speciesName with word boundaries to avoid partial matches like "cast" matching "cherrim"
           sql`(lower(${pokemon.speciesName}) LIKE ${`${query.toLowerCase()}%`} OR lower(${pokemon.speciesName}) LIKE ${`%-${query.toLowerCase()}%`})`
         ))
+        .orderBy(pokemon.ndexId)
         .limit(50);
       
       console.log(`[searchPokemonForGame] Found ${results.length} raw results`);
@@ -143,144 +144,52 @@ class DatabaseStorage implements IStorage {
         console.log(`[searchPokemonForGame] First result: ${results[0].name}, speciesName: ${results[0].speciesName}`);
       }
       
-      // DEFINITIVE list of purely cosmetic forms (100% same moveset)
-      // Only including Pokemon where ALL forms share the EXACT same moveset
-      const cosmeticSuffixes = [
-        // Unown - 28 forms, all identical moveset (only Hidden Power) - keep only default
-        '-a', '-b', '-c', '-d', '-e', '-f', '-g', '-h', '-i', '-j', '-k', '-l', '-m',
-        '-n', '-o', '-p', '-q', '-r', '-s', '-t', '-u', '-v', '-w', '-x', '-y', '-z',
-        '-exclamation', '-question',
-        
-        // Castform - weather forms, same moveset
-        // NOTE: Excluding '-default' from this list because Tapu Pokemon use it but are NOT cosmetic
-        '-sunny', '-rainy', '-snowy',
-        
-        // Burmy - cloak forms, same moveset (Wormadam has DIFFERENT moves and should NOT be deduplicated)
-        '-plant-cloak', '-sandy-cloak', '-trash-cloak',
-        
-        // Cherrim - form changes in battle but same moveset
-        '-overcast', '-sunshine',
-        
-        // Shellos/Gastrodon - sea forms, same moveset
-        '-west-sea', '-east-sea',
-        
-        // Arceus - type plates, all same moveset (Judgment changes type but moveset is identical)
-        '-normal', '-fighting', '-flying', '-poison', '-ground', '-rock', '-bug', '-ghost',
-        '-steel', '-fire', '-water', '-grass', '-electric', '-psychic', '-ice', '-dragon',
-        '-dark', '-fairy',
-        
-        // Basculin - stripe forms, same moveset (White-Striped has different evolution but same moves)
-        '-red-stripe', '-blue-stripe', '-white-stripe',
-        
-        // Deerling/Sawsbuck - seasonal forms, same moveset
-        '-spring', '-summer', '-autumn', '-winter',
-        
-        // Vivillon - pattern forms, all same moveset
-        '-meadow', '-icy-snow', '-polar', '-tundra', '-continental', '-garden', '-elegant',
-        '-modern', '-marine', '-archipelago', '-high-plains', '-sandstorm', '-river',
-        '-monsoon', '-savanna', '-sun', '-ocean', '-jungle', '-fancy', '-poke-ball',
-        
-        // Flabébé/Floette/Florges - flower colors, same moveset
-        '-red', '-yellow', '-orange', '-blue', '-white',
-        
-        // Furfrou - trim forms, all same moveset
-        '-natural', '-heart', '-star', '-diamond', '-debutante', '-matron', '-dandy',
-        '-lareine', '-kabuki', '-pharaoh',
-        
-        // Pumpkaboo/Gourgeist - size forms (different stats but same moveset)
-        '-average', '-small', '-large', '-super',
-        
-        // Xerneas - mode forms (just visual)
-        '-neutral', '-active',
-        
-        // Silvally - memory forms, all same moveset (Multi-Attack changes type but moveset identical)
-        '-fighting-memory', '-flying-memory', '-poison-memory', '-ground-memory',
-        '-rock-memory', '-bug-memory', '-ghost-memory', '-steel-memory', '-fire-memory',
-        '-water-memory', '-grass-memory', '-electric-memory', '-psychic-memory',
-        '-ice-memory', '-dragon-memory', '-dark-memory', '-fairy-memory',
-        
-        // Minior - core colors + meteor, all same moveset
-        '-red-core', '-orange-core', '-yellow-core', '-green-core', '-blue-core',
-        '-indigo-core', '-violet-core', '-meteor', '-red-meteor',
-        
-        // Sinistea/Polteageist - authenticity (just visual)
-        '-phony', '-antique',
-        
-        // Alcremie - cream variants, all same moveset
-        '-vanilla-cream', '-ruby-cream', '-matcha-cream', '-mint-cream', '-lemon-cream',
-        '-salted-cream', '-ruby-swirl', '-caramel-swirl', '-rainbow-swirl',
-        
-        // Maushold - family size (just visual)
-        '-family-of-three', '-family-of-four',
-        
-        // Squawkabilly - plumage colors, same moveset
-        '-green', '-blue', '-yellow', '-white',
-        
-        // Dudunsparce - segment count (just visual)
-        '-two-segment', '-three-segment',
-        
-        // Poltchageist/Sinistcha - authenticity (just visual)
-        '-counterfeit', '-artisan',
-        
-        // Pikachu - cosmetic forms (caps, costumes)
-        '-pop-star', '-rock-star', '-belle', '-phd', '-libre',
-        '-original-cap', '-hoenn-cap', '-sinnoh-cap', '-unova-cap', '-kalos-cap',
-        '-alola-cap', '-partner-cap', '-world-cap',
-        
-        // Koraidon - build forms, same moveset (just visual/functional changes for traversal)
-        '-apex', '-limited', '-sprinting', '-swimming', '-gliding',
-        
-        // Miraidon - mode forms, same moveset (just visual/functional changes for traversal)
-        '-ultimate', '-low-power', '-drive', '-aquatic', '-glide',
-        
-        // Totem forms - same moveset as base forms, just larger size
-        '-totem', '-alolan-totem',
-      ];
+      // Group by ndexId and prefer default forms
+      const ndexMap = new Map<number, Pokemon[]>();
       
-      // Deduplicate: keep only base forms for cosmetic variants
-      const uniqueMap = new Map<string, Pokemon>();
-      for (const p of results) {
-        const speciesLower = p.speciesName.toLowerCase();
-        
-        // Check if this is a cosmetic form
-        const isCosmeticForm = cosmeticSuffixes.some(suffix => speciesLower.endsWith(suffix));
-        
-        // For cosmetic forms, use base name as key; otherwise use full species name
-        const key = isCosmeticForm 
-          ? speciesLower.split('-')[0] // Base name only
-          : speciesLower; // Full name (keeps Mega, Alolan, etc.)
-        
-        if (!uniqueMap.has(key)) {
-          // Clean the display name for cosmetic forms
-          let cleanedPokemon = p;
-          if (isCosmeticForm) {
-            // Extract base name from speciesName (e.g., "sawsbuck-spring" -> "sawsbuck")
-            const baseName = p.speciesName.split('-')[0];
-            // Capitalize first letter
-            const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-            cleanedPokemon = {
-              ...p,
-              name: displayName
-            };
-          }
-          
-          uniqueMap.set(key, cleanedPokemon);
-        } else {
-          // If we already have an entry, prefer "default" form if this is one
-          const existing = uniqueMap.get(key)!;
-          if (speciesLower.includes('-default') && !existing.speciesName.toLowerCase().includes('-default')) {
-            // Extract base name from speciesName
-            const baseName = p.speciesName.split('-')[0];
-            const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-            uniqueMap.set(key, {
-              ...p,
-              name: displayName
-            });
-          }
+      for (const pkmn of results) {
+        if (!ndexMap.has(pkmn.ndexId)) {
+          ndexMap.set(pkmn.ndexId, []);
         }
+        ndexMap.get(pkmn.ndexId)!.push(pkmn);
       }
       
-      const finalResults = Array.from(uniqueMap.values()).slice(0, 20);
+      // For each ndex, pick the best form (prefer -default, then no suffix, then first)
+      const finalResults: Pokemon[] = [];
+      for (const [ndexId, forms] of ndexMap.entries()) {
+        if (forms.length > 1) {
+          console.log(`[searchPokemonForGame] ndex ${ndexId} has ${forms.length} forms:`, forms.map(f => f.speciesName));
+        }
+        
+        // Find default form
+        let chosen = forms.find(f => f.speciesName.endsWith('-default'));
+        
+        // If no -default, find form without suffix (base form)
+        if (!chosen) {
+          chosen = forms.find(f => !f.speciesName.includes('-'));
+        }
+        
+        // Otherwise, take the first one
+        if (!chosen) {
+          chosen = forms[0];
+        }
+        
+        if (forms.length > 1) {
+          console.log(`[searchPokemonForGame] Chose: ${chosen.speciesName}`);
+        }
+        
+        // Clean up the display name - capitalize and remove -default suffix
+        const baseName = chosen.speciesName.replace(/-default.*/, '').split('-')[0];
+        const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+        
+        finalResults.push({
+          ...chosen,
+          name: displayName
+        });
+        
+        if (finalResults.length >= 20) break;
+      }
+      
       console.log(`[searchPokemonForGame] Returning ${finalResults.length} unique results`);
       
       return finalResults;
