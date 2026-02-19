@@ -110,9 +110,21 @@ function isUniqueMoveset(
 }
 
 async function generatePuzzles() {
-  console.log("Starting puzzle generation...");
+  // Get generation from command line args or environment variable
+  const args = process.argv.slice(2);
+  const genArg = args[0] || process.env.GENERATION;
+  const targetGen = genArg ? parseInt(genArg) : null;
   
-  for (let gen = 1; gen <= 9; gen++) {
+  if (!targetGen || targetGen < 1 || targetGen > 9) {
+    console.error("Invalid generation. Usage: tsx generate-puzzles.ts <generation>");
+    console.error("Example: tsx generate-puzzles.ts 3");
+    process.exit(1);
+  }
+  
+  console.log(`Starting FAST puzzle generation for Generation ${targetGen}...`);
+  console.log(`Target: ~10,000 unique puzzles\n`);
+  
+  const gen = targetGen;
     console.log(`\nGenerating puzzles for Generation ${gen}...`);
     
     // Get all Pokemon up to this generation
@@ -262,9 +274,8 @@ async function generatePuzzles() {
     
     const fileSize = (fs.statSync(csvPath).size / 1024).toFixed(2);
     console.log(`\nSaved to ${csvPath} (${fileSize} KB)`);
-  }
   
-  console.log("\nPuzzle generation complete!");
+  console.log("\n✅ Puzzle generation complete!");
   process.exit(0);
 }
 
