@@ -7,6 +7,8 @@ import { Database, Zap, AlertCircle, CheckCircle } from "lucide-react";
 export default function Admin() {
   const [resetLoading, setResetLoading] = useState(false);
   const [indexLoading, setIndexLoading] = useState(false);
+  const [puzzleLoading, setPuzzleLoading] = useState(false);
+  const [selectedGen, setSelectedGen] = useState(1);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const handleResetDatabase = async () => {
@@ -54,6 +56,52 @@ export default function Admin() {
       setMessage({ type: "error", text: "Errore di connessione al server" });
     } finally {
       setIndexLoading(false);
+    }
+  };
+
+  const handleGeneratePuzzles = async () => {
+    setPuzzleLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/generate-puzzles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generation: selectedGen }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione puzzle" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    } finally {
+      setPuzzleLoading(false);
+    }
+  };
+
+  const handleGenerateAllPuzzles = async () => {
+    setPuzzleLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/generate-all-puzzles", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione puzzle" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    } finally {
+      setPuzzleLoading(false);
     }
   };
 
@@ -144,6 +192,64 @@ export default function Admin() {
             </RetroButton>
           </RetroCard>
         </div>
+
+        <RetroCard className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <Zap className="w-8 h-8 text-blue-500" />
+            <div>
+              <h2 className="text-xl font-retro text-foreground">Genera Puzzle</h2>
+              <p className="text-sm text-muted-foreground">Pre-calcola puzzle unici per velocizzare il gioco</p>
+            </div>
+          </div>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              Genera un file CSV con puzzle unici per una generazione specifica.
+              Questo riduce il tempo di caricamento dei quiz da 5-15 secondi a meno di 100ms!
+            </p>
+            <p className="font-bold text-foreground">
+              💡 Genera i puzzle per ogni generazione che usi frequentemente.
+            </p>
+            <p className="text-xs">
+              La generazione può richiedere 2-10 minuti per generazione. Controlla i log del server per il progresso.
+            </p>
+          </div>
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="text-sm font-mono text-muted-foreground mb-2 block">
+                Generazione:
+              </label>
+              <select
+                value={selectedGen}
+                onChange={(e) => setSelectedGen(Number(e.target.value))}
+                className="w-full p-2 pixel-border-sm bg-background text-foreground font-mono"
+                disabled={puzzleLoading}
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(gen => (
+                  <option key={gen} value={gen}>Gen {gen}</option>
+                ))}
+              </select>
+            </div>
+            <RetroButton
+              onClick={handleGeneratePuzzles}
+              isLoading={puzzleLoading}
+              disabled={puzzleLoading}
+              className="flex-1"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              Genera Puzzle
+            </RetroButton>
+          </div>
+          <RetroButton
+            onClick={handleGenerateAllPuzzles}
+            isLoading={puzzleLoading}
+            disabled={puzzleLoading}
+            variant="outline"
+            className="w-full border-blue-300 text-blue-600 hover:bg-blue-50"
+          >
+            <Zap className="w-4 h-4 mr-2" />
+            Genera TUTTE le Generazioni (1-9)
+          </RetroButton>
+        </RetroCard>
 
         <RetroCard className="p-6 space-y-3">
           <h3 className="text-lg font-retro text-foreground">Informazioni</h3>
