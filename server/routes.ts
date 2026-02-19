@@ -1399,29 +1399,25 @@ export async function registerRoutes(
     }
   });
 
-  // ADMIN ENDPOINT - Generate ALL puzzle files (Gen 1-9)
+  // ADMIN ENDPOINT - Generate ALL puzzle files (Gen 1-9) - FAST version
   app.post("/api/admin/generate-all-puzzles", async (req, res) => {
     try {
-      console.log("Starting puzzle generation for ALL generations (1-9)...");
+      console.log("Starting FAST puzzle generation for ALL generations (1-9)...");
       
       res.json({ 
         success: true, 
-        message: "Generazione puzzle per TUTTE le generazioni (1-9) avviata! Controlla i log del server. Ci vorranno 20-60 minuti." 
+        message: "Generazione RAPIDA per TUTTE le generazioni (1-9) avviata! Controlla i log del server. Target: ~10,000 puzzles per gen." 
       });
       
       // Run generation in background
       (async () => {
         for (let gen = 1; gen <= 9; gen++) {
           try {
-            console.log(`\n========== Starting Gen ${gen} ==========`);
-            const puzzles: Array<{
-              pokemonId: number;
-              pokemonName: string;
-              ndexId: number;
-              moveIds: string;
-              generation: number;
-            }> = [];
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`STARTING GEN ${gen}`);
+            console.log(`${'='.repeat(60)}\n`);
             
+            // Get all Pokemon for this generation
             const allPokemon = await db.select({
               id: pokemon.id,
               name: pokemon.name,
@@ -1431,6 +1427,9 @@ export async function registerRoutes(
             .from(pokemon)
             .where(lte(pokemon.generationId, gen));
             
+            console.log(`Found ${allPokemon.length} Pokemon`);
+            
+            // Filter cosmetic forms
             const filtered = allPokemon.filter(p => {
               const name = p.speciesName;
               return !name.includes('-cap') &&
@@ -1446,40 +1445,143 @@ export async function registerRoutes(
                      !name.includes('-totem');
             });
             
-            console.log(`Found ${filtered.length} Pokemon for Gen ${gen}`);
+            console.log(`After filtering: ${filtered.length} Pokemon`);
+            console.log("Pre-loading moves for all Pokemon...");
             
-            let processed = 0;
-            for (const pkmn of filtered) {
-              const validMoves = await storage.getMovesForPokemon(pkmn.id, gen);
+            // Pre-load all moves for all Pokemon
+            const allPokemonMoves = new Map<number, Set<number>>();
+            
+            for (let i = 0; i < filtered.length; i++) {
+              const pkmn = filtered[i];
+              const moveIds = await storage.getMovesForPokemon(pkmn.id, gen);
+              allPokemonMoves.set(pkmn.id, new Set(moveIds.map(m => m.id)));
               
-              if (validMoves.length >= 4) {
-                for (let attempt = 0; attempt < 10 && puzzles.filter(p => p.pokemonId === pkmn.id).length < 3; attempt++) {
-                  const shuffled = validMoves.sort(() => 0.5 - Math.random());
-                  const selected = shuffled.slice(0, 4);
-                  const moveIds = selected.map(m => m.id);
-                  
-                  const isUnique = await storage.checkUniqueMoveset(moveIds, pkmn.id, gen);
-                  
-                  if (isUnique) {
-                    puzzles.push({
-                      pokemonId: pkmn.id,
-                      pokemonName: pkmn.name,
-                      ndexId: pkmn.ndexId,
-                      moveIds: moveIds.join(','),
-                      generation: gen
-                    });
+              if ((i + 1) % 100 === 0) {
+                console.log(`  Loaded moves for ${i + 1}/${filtered.length} Pokemon`);
+              }
+            }
+            
+            console.log("Generating unique puzzles (up to 10,000)...");
+            
+            const puzzles: Array<{
+              pokemonId: number;
+              pokemonName: string;
+              ndexId: number;
+              moveIds: string;
+              generation: number;
+            }> = [];
+            
+            const MAX_PUZZLES = 10000;
+            let totalChecked = 0;
+            
+            // Helper function to generate combinations
+            function* generateCombinations(moves: number[], maxCombos: number): Generator<number[]> {
+              let count = 0;
+              const n = moves.length;
+              
+              for (let i = 0; i < n - 3 && count < maxCombos; i++) {
+                for (let j = i + 1; j < n - 2 && count < maxCombos; j++) {
+                  for (let k = j + 1; k < n - 1 && count < maxCombos; k++) {
+                    for (let l = k + 1; l < n && count < maxCombos; l++) {
+                      yield [moves[i], moves[j], moves[k], moves[l]];
+                      count++;
+                    }
                   }
                 }
               }
+            }
+            
+            // Helper function to check if moveset is unique
+            function isUniqueMoveset(moveIds: number[], pokemonId: number): boolean {
+              for (const [otherPokemonId, otherMoves] of allPokemonMoves.entries()) {
+                if (otherPokemonId === pokemonId) continue;
+                
+                const canLearnAll = moveIds.every(moveId => otherMoves.has(moveId));
+                if (canLearnAll) {
+                  return false;
+                }
+              }
+              return true;
+            }
+            
+            // Process each Pokemon
+            console.log("Processing Pokemon to find unique puzzles...");
+            
+            for (let i = 0; i < filtered.length && puzzles.length < MAX_PUZZLES; i++) {
+              const pkmn = filtered[i];
+              const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
               
-              processed++;
-              if (processed % 100 === 0) {
-                console.log(`[Gen ${gen}] Processed ${processed}/${filtered.length} Pokemon, found ${puzzles.length} puzzles`);
+              if (moveIds.length < 4) {
+                continue;
+              }
+              
+              let foundForPokemon = 0;
+              const maxPerPokemon = 50;
+              
+              // Calculate total possible combinations
+              const totalPossible = (moveIds.length * (moveIds.length - 1) * (moveIds.length - 2) * (moveIds.length - 3)) / 24;
+              const maxCombosToCheck = Math.min(50000, totalPossible);
+              
+              // Generate and check combinations
+              for (const combo of generateCombinations(moveIds, maxCombosToCheck)) {
+                if (foundForPokemon >= maxPerPokemon) break;
+                if (puzzles.length >= MAX_PUZZLES) break;
+                
+                totalChecked++;
+                
+                // Check if unique
+                const isUnique = isUniqueMoveset(combo, pkmn.id);
+                
+                if (isUnique) {
+                  const comboKey = combo.join(',');
+                  
+                  // Check if we already have this exact combination
+                  if (puzzles.some(p => p.moveIds === comboKey)) continue;
+                  
+                  puzzles.push({
+                    pokemonId: pkmn.id,
+                    pokemonName: pkmn.name,
+                    ndexId: pkmn.ndexId,
+                    moveIds: comboKey,
+                    generation: gen
+                  });
+                  
+                  foundForPokemon++;
+                }
+                
+                // Progress update
+                if (totalChecked % 10000 === 0) {
+                  console.log(`  [${i + 1}/${filtered.length}] Checked ${totalChecked} combos, found ${puzzles.length} unique`);
+                }
+              }
+              
+              // Progress update every 50 Pokemon
+              if ((i + 1) % 50 === 0) {
+                console.log(`Processed ${i + 1}/${filtered.length} Pokemon, found ${puzzles.length} puzzles`);
               }
             }
             
             console.log(`Generated ${puzzles.length} puzzles for Gen ${gen}`);
             
+            // Show distribution statistics
+            const distribution = new Map<number, number>();
+            for (const puzzle of puzzles) {
+              const count = distribution.get(puzzle.pokemonId) || 0;
+              distribution.set(puzzle.pokemonId, count + 1);
+            }
+            
+            const pokemonWithPuzzles = distribution.size;
+            const avgPuzzlesPerPokemon = (puzzles.length / pokemonWithPuzzles).toFixed(1);
+            const maxPuzzles = Math.max(...Array.from(distribution.values()));
+            const minPuzzles = Math.min(...Array.from(distribution.values()));
+            
+            console.log(`\nDistribution stats:`);
+            console.log(`  Pokemon with puzzles: ${pokemonWithPuzzles}/${filtered.length}`);
+            console.log(`  Average puzzles per Pokemon: ${avgPuzzlesPerPokemon}`);
+            console.log(`  Min puzzles for a Pokemon: ${minPuzzles}`);
+            console.log(`  Max puzzles for a Pokemon: ${maxPuzzles}`);
+            
+            // Write to CSV
             const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
             const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
             const csvRows = puzzles.map(p => 
@@ -1489,7 +1591,9 @@ export async function registerRoutes(
             fs.mkdirSync(path.dirname(csvPath), { recursive: true });
             fs.writeFileSync(csvPath, csvHeader + csvRows);
             
-            console.log(`✅ Gen ${gen} complete: Saved ${puzzles.length} puzzles to ${csvPath}`);
+            const fileSize = (fs.statSync(csvPath).size / 1024).toFixed(2);
+            console.log(`\n✅ Gen ${gen} complete: Saved ${puzzles.length} puzzles to ${csvPath} (${fileSize} KB)`);
+            
           } catch (error) {
             console.error(`❌ Error generating puzzles for Gen ${gen}:`, error);
           }
