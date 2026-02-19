@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Gamepad2, BookOpen, Trophy } from "lucide-react";
+import { Gamepad2, BookOpen, Trophy, Moon, Sun } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -9,6 +10,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   const navItems = [
     { href: "/", label: "Home", icon: Gamepad2 },
@@ -29,7 +31,7 @@ export function Layout({ children }: LayoutProps) {
             </span>
           </Link>
           
-          <nav className="flex items-center space-x-6 text-sm font-medium">
+          <nav className="flex items-center space-x-6 text-sm font-medium flex-1">
             {navItems.map((item) => (
               <Link 
                 key={item.href} 
@@ -44,6 +46,20 @@ export function Layout({ children }: LayoutProps) {
               </Link>
             ))}
           </nav>
+
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="ml-auto p-2 rounded-lg border-2 border-border bg-background hover:bg-accent transition-colors"
+            aria-label="Toggle theme"
+            title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          >
+            {theme === "light" ? (
+              <Moon className="w-5 h-5 text-foreground" />
+            ) : (
+              <Sun className="w-5 h-5 text-foreground" />
+            )}
+          </button>
         </div>
       </header>
 
