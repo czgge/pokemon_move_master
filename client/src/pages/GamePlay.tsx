@@ -508,14 +508,14 @@ function GameOverScreen({ score, maxGen, lastPokemon, onRestart }: { score: numb
   return (
     <Layout>
       <div className="min-h-[80vh] flex flex-col items-center justify-center text-center p-4">
-        <RetroCard className="w-full max-w-md p-8 space-y-8 bg-white/95">
+        <RetroCard className="w-full max-w-md p-8 space-y-8 bg-card/95">
           <div className="space-y-4">
             <h1 className="text-4xl md:text-5xl font-retro text-destructive mb-2">GAME OVER</h1>
             <p className="text-xl text-muted-foreground">You ran out of lives!</p>
           </div>
 
           {lastPokemon && (
-            <div className="py-4 border-y-2 border-dashed border-gray-200">
+            <div className="py-4 border-y-2 border-dashed border-border">
               <p className="text-sm text-muted-foreground mb-2">The last Pokémon was:</p>
               <div className="flex flex-col items-center">
                  {lastPokemon.imageUrl && (
@@ -537,7 +537,7 @@ function GameOverScreen({ score, maxGen, lastPokemon, onRestart }: { score: numb
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="ENTER YOUR NAME"
-                    className="w-full p-3 text-center font-retro text-lg uppercase bg-white border-2 border-foreground rounded focus:outline-none focus:border-primary"
+                    className="w-full p-3 text-center font-retro text-lg uppercase bg-input text-foreground border-2 border-foreground rounded focus:outline-none focus:border-primary placeholder:text-muted-foreground"
                     maxLength={20}
                   />
                   <RetroButton 
