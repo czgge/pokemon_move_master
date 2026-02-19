@@ -15,6 +15,7 @@ export default function Admin() {
     size: number;
     puzzleCount: number;
     created: string;
+    isComplete?: boolean;
   }>>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -119,10 +120,65 @@ export default function Admin() {
 
       if (data.success) {
         setMessage({ type: "success", text: data.message });
-        // Reload files after a delay
         setTimeout(loadPuzzleFiles, 5000);
       } else {
         setMessage({ type: "error", text: data.message || "Errore nella generazione puzzle" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    } finally {
+      setPuzzleLoading(false);
+    }
+  };
+
+  const handleGenerateCompletePuzzles = async () => {
+    if (!confirm("⚠️ La generazione COMPLETA può richiedere 1-4 ore per generazione. Continuare?")) {
+      return;
+    }
+    
+    setPuzzleLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/generate-complete-puzzles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generation: selectedGen }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+        setTimeout(loadPuzzleFiles, 10000);
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione completa" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    } finally {
+      setPuzzleLoading(false);
+    }
+  };
+
+  const handleGenerateAllCompletePuzzles = async () => {
+    if (!confirm("⚠️ La generazione COMPLETA di TUTTE le generazioni può richiedere 10-20 ORE. Sei sicuro?")) {
+      return;
+    }
+    
+    setPuzzleLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/generate-complete-puzzles", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ type: "success", text: data.message });
+        setTimeout(loadPuzzleFiles, 10000);
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione completa" });
       }
     } catch (error) {
       setMessage({ type: "error", text: "Errore di connessione al server" });
@@ -234,13 +290,15 @@ export default function Admin() {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
               Genera un file CSV con puzzle unici per una generazione specifica.
-              Questo riduce il tempo di caricamento dei quiz da 5-15 secondi a meno di 100ms!
             </p>
             <p className="font-bold text-foreground">
-              💡 Genera i puzzle per ogni generazione che usi frequentemente.
+              💡 Modalità RAPIDA: ~3 puzzle per Pokemon (~5-20 minuti per gen)
+            </p>
+            <p className="font-bold text-blue-600">
+              🚀 Modalità COMPLETA: TUTTI i puzzle possibili (~1-4 ore per gen)
             </p>
             <p className="text-xs">
-              La generazione può richiedere 2-10 minuti per generazione. Controlla i log del server per il progresso.
+              Controlla i log del server per il progresso.
             </p>
           </div>
           <div className="flex gap-3 items-end">
@@ -266,19 +324,42 @@ export default function Admin() {
               className="flex-1"
             >
               <Zap className="w-4 h-4 mr-2" />
-              Genera Puzzle
+              Rapido
+            </RetroButton>
+            <RetroButton
+              onClick={handleGenerateCompletePuzzles}
+              isLoading={puzzleLoading}
+              disabled={puzzleLoading}
+              variant="outline"
+              className="flex-1 border-blue-300 text-blue-600"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              Completo
             </RetroButton>
           </div>
-          <RetroButton
-            onClick={handleGenerateAllPuzzles}
-            isLoading={puzzleLoading}
-            disabled={puzzleLoading}
-            variant="outline"
-            className="w-full border-blue-300 text-blue-600 hover:bg-blue-50"
-          >
-            <Zap className="w-4 h-4 mr-2" />
-            Genera TUTTE le Generazioni (1-9)
-          </RetroButton>
+          <div className="grid grid-cols-2 gap-3">
+            <RetroButton
+              onClick={handleGenerateAllPuzzles}
+              isLoading={puzzleLoading}
+              disabled={puzzleLoading}
+              variant="outline"
+              className="w-full"
+            >
+              Tutte Gen - Rapido
+            </RetroButton>
+            <RetroButton
+              onClick={handleGenerateAllCompletePuzzles}
+              isLoading={puzzleLoading}
+              disabled={puzzleLoading}
+              variant="outline"
+              className="w-full border-blue-300 text-blue-600"
+            >
+              Tutte Gen - Completo
+            </RetroButton>
+          </div>
+          <div className="text-center text-xs text-muted-foreground font-mono">
+            💡 Rapido: ~3 puzzle/Pokemon (5-20min) • Completo: TUTTI i puzzle (1-4h per gen)
+          </div>
         </RetroCard>
 
         <RetroCard className="p-6 space-y-4">
@@ -304,8 +385,13 @@ export default function Admin() {
                 {puzzleFiles.map(file => (
                   <div key={file.filename} className="flex items-center justify-between p-3 pixel-border-sm bg-muted/30">
                     <div className="flex-1">
-                      <p className="font-mono text-sm font-bold">Gen {file.generation}</p>
-                      <p className="text-xs text-muted-foreground">{file.puzzleCount} puzzle • {(file.size / 1024).toFixed(1)} KB</p>
+                      <p className="font-mono text-sm font-bold">
+                        Gen {file.generation}
+                        {file.isComplete && <span className="ml-2 text-xs text-blue-600">✨ COMPLETO</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {file.puzzleCount.toLocaleString()} puzzle • {(file.size / 1024).toFixed(1)} KB
+                      </p>
                     </div>
                     <RetroButton
                       onClick={() => handleDownloadPuzzle(file.generation)}
