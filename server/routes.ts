@@ -1406,6 +1406,75 @@ export async function registerRoutes(
     }
   });
 
+  // ADMIN ENDPOINT - Download puzzle file
+  app.get("/api/admin/download-puzzle/:gen", async (req, res) => {
+    try {
+      const gen = parseInt(req.params.gen);
+      if (gen < 1 || gen > 9) {
+        return res.status(400).json({ success: false, message: "Generazione non valida (1-9)" });
+      }
+      
+      const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
+      
+      if (!fs.existsSync(csvPath)) {
+        return res.status(404).json({ 
+          success: false, 
+          message: `File puzzle per Gen ${gen} non trovato. Genera prima i puzzle.` 
+        });
+      }
+      
+      res.download(csvPath, `puzzles-gen${gen}.csv`);
+    } catch (error) {
+      console.error("Error downloading puzzle file:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nel download del file", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ADMIN ENDPOINT - List available puzzle files
+  app.get("/api/admin/puzzle-files", async (req, res) => {
+    try {
+      const dataDir = path.join(process.cwd(), 'data');
+      
+      if (!fs.existsSync(dataDir)) {
+        return res.json({ files: [] });
+      }
+      
+      const files = fs.readdirSync(dataDir)
+        .filter(f => f.startsWith('puzzles-gen') && f.endsWith('.csv'))
+        .map(f => {
+          const filePath = path.join(dataDir, f);
+          const stats = fs.statSync(filePath);
+          const gen = parseInt(f.match(/puzzles-gen(\d+)\.csv/)?.[1] || '0');
+          
+          // Count lines in file (excluding header)
+          const content = fs.readFileSync(filePath, 'utf-8');
+          const lines = content.split('\n').length - 2; // -1 for header, -1 for last empty line
+          
+          return {
+            filename: f,
+            generation: gen,
+            size: stats.size,
+            puzzleCount: lines,
+            created: stats.mtime
+          };
+        })
+        .sort((a, b) => a.generation - b.generation);
+      
+      res.json({ files });
+    } catch (error) {
+      console.error("Error listing puzzle files:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nel recupero dei file", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   // Seeding is now done manually via /admin endpoint to avoid startup issues
   // seedDatabase().catch(console.error);
 
