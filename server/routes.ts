@@ -720,6 +720,34 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/pokemon/search", async (req, res) => {
+    try {
+      const query = req.query.query as string;
+      const gen = parseInt(req.query.gen as string) || 9;
+      if (!query) return res.json([]);
+
+      const results = await db.select({
+        id: pokemon.id,
+        name: pokemon.name,
+        speciesName: pokemon.speciesName,
+        type1: pokemon.type1,
+        type2: pokemon.type2,
+        imageUrl: pokemon.imageUrl,
+        generationId: pokemon.generationId
+      })
+        .from(pokemon)
+        .where(and(
+          sql`lower(${pokemon.name}) LIKE ${`%${query.toLowerCase()}%`}`,
+          lte(pokemon.generationId, gen)
+        ))
+        .limit(10);
+      res.json(results);
+    } catch (err) {
+      console.error("Error in /api/pokemon/search:", err);
+      res.status(500).json({ message: "Error searching pokemon", error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   app.get(api.pokedex.search.path, async (req, res) => {
     const query = req.query.query as string;
     const maxGen = parseInt(req.query.maxGen as string);
