@@ -918,23 +918,16 @@ export async function registerRoutes(
       const directLearnerIds = directLearners.map(p => p.pokemonId);
       console.log(`[Validator] Found ${directLearnerIds.length} Pokemon that directly learn all moves`);
       
-      // Now find all evolutions of these Pokemon
-      // Logic: If Pikachu learns Quick Attack, we need to include Raichu
+      // IMPORTANT: We should NOT include future evolutions!
+      // The validator should only return Pokemon that can ACTUALLY learn these moves.
+      // Evolution logic is handled by getMovesForPokemon which includes PRE-evolutions.
+      // 
+      // Example: If Eevee learns Bite, the validator should return Eevee.
+      // When checking Flareon's moves, getMovesForPokemon will include Eevee's moves.
+      // But the validator should NOT say "Flareon can learn Bite" - only "Eevee can learn Bite".
+      //
+      // This prevents false positives like "Arcanine learns Teleport" when only Abra does.
       const allPokemonIds = new Set<number>(directLearnerIds);
-      
-      for (const learnerId of directLearnerIds) {
-        // Find Pokemon that evolve FROM this learner
-        const evos = await db.select()
-          .from(evolutions)
-          .where(eq(evolutions.evolvedSpeciesId, learnerId));
-        
-        console.log(`[Validator] Checking evolutions for Pokemon ID ${learnerId}, found ${evos.length} evolutions`);
-        
-        for (const evo of evos) {
-          allPokemonIds.add(evo.evolvesIntoSpeciesId);
-          console.log(`[Validator] Added evolution: Pokemon ${evo.evolvedSpeciesId} -> Pokemon ${evo.evolvesIntoSpeciesId}`);
-        }
-      }
       
       console.log(`[Validator] Total Pokemon IDs (learners + evolutions): ${allPokemonIds.size}`);
       
