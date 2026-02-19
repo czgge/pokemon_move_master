@@ -1406,6 +1406,184 @@ export async function registerRoutes(
     }
   });
 
+  // ADMIN ENDPOINT - Generate COMPLETE puzzle files (ALL combinations)
+  app.post("/api/admin/generate-complete-puzzles", async (req, res) => {
+    try {
+      const { generation } = req.body;
+      const gen = generation || null;
+      
+      if (gen) {
+        console.log(`Starting COMPLETE puzzle generation for Gen ${gen}...`);
+        res.json({ 
+          success: true, 
+          message: `Generazione COMPLETA per Gen ${gen} avviata! Controlla i log. Ci vorranno 1-4 ore.` 
+        });
+      } else {
+        console.log("Starting COMPLETE puzzle generation for ALL generations (1-9)...");
+        res.json({ 
+          success: true, 
+          message: "Generazione COMPLETA per TUTTE le generazioni avviata! Controlla i log. Ci vorranno 10-20 ore." 
+        });
+      }
+      
+      // Run complete generation in background
+      (async () => {
+        const generations = gen ? [gen] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        
+        for (const targetGen of generations) {
+          try {
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`COMPLETE GENERATION - GEN ${targetGen}`);
+            console.log(`${'='.repeat(60)}\n`);
+            
+            const startTime = Date.now();
+            
+            // Get all Pokemon
+            const allPokemon = await db.select({
+              id: pokemon.id,
+              name: pokemon.name,
+              ndexId: pokemon.ndexId,
+              speciesName: pokemon.speciesName
+            })
+            .from(pokemon)
+            .where(lte(pokemon.generationId, targetGen));
+            
+            const filtered = allPokemon.filter(p => {
+              const name = p.speciesName;
+              return !name.includes('-cap') &&
+                     !name.includes('-original') &&
+                     !name.includes('-hoenn') &&
+                     !name.includes('-sinnoh') &&
+                     !name.includes('-unova') &&
+                     !name.includes('-kalos') &&
+                     !name.includes('-alola') &&
+                     !name.includes('-partner') &&
+                     !name.includes('-world') &&
+                     !name.includes('-gigantamax') &&
+                     !name.includes('-totem');
+            });
+            
+            console.log(`Found ${filtered.length} Pokemon for Gen ${targetGen}`);
+            
+            // Pre-load all moves
+            console.log("Pre-loading moves...");
+            const allPokemonMoves = new Map<number, Set<number>>();
+            const validVersionIds = await getValidVersionIds(targetGen);
+            
+            for (let i = 0; i < filtered.length; i++) {
+              const pkmn = filtered[i];
+              const pokemonWithPreEvos = await storage.getPokemonWithPreEvolutions(pkmn.id);
+              const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+                .from(pokemonMoves)
+                .where(and(
+                  inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
+                  inArray(pokemonMoves.versionGroupId, validVersionIds)
+                ));
+              
+              allPokemonMoves.set(pkmn.id, new Set(pokemonMovesList.map(m => m.moveId)));
+              
+              if ((i + 1) % 50 === 0) {
+                console.log(`  Loaded ${i + 1}/${filtered.length} Pokemon`);
+              }
+            }
+            
+            console.log("Generating ALL unique combinations...");
+            const puzzles: Array<{
+              pokemonId: number;
+              pokemonName: string;
+              ndexId: number;
+              moveIds: string;
+              generation: number;
+            }> = [];
+            
+            let totalCombos = 0;
+            
+            for (let i = 0; i < filtered.length; i++) {
+              const pkmn = filtered[i];
+              const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+              
+              if (moveIds.length < 4) continue;
+              
+              // Generate all 4-move combinations
+              const combinations: number[][] = [];
+              for (let a = 0; a < moveIds.length - 3; a++) {
+                for (let b = a + 1; b < moveIds.length - 2; b++) {
+                  for (let c = b + 1; c < moveIds.length - 1; c++) {
+                    for (let d = c + 1; d < moveIds.length; d++) {
+                      combinations.push([moveIds[a], moveIds[b], moveIds[c], moveIds[d]]);
+                    }
+                  }
+                }
+              }
+              
+              let uniqueCount = 0;
+              for (const combo of combinations) {
+                totalCombos++;
+                
+                // Check uniqueness
+                let isUnique = true;
+                for (const [otherId, otherMoves] of allPokemonMoves.entries()) {
+                  if (otherId === pkmn.id) continue;
+                  if (combo.every(m => otherMoves.has(m))) {
+                    isUnique = false;
+                    break;
+                  }
+                }
+                
+                if (isUnique) {
+                  uniqueCount++;
+                  puzzles.push({
+                    pokemonId: pkmn.id,
+                    pokemonName: pkmn.name,
+                    ndexId: pkmn.ndexId,
+                    moveIds: combo.join(','),
+                    generation: targetGen
+                  });
+                }
+                
+                if (totalCombos % 10000 === 0) {
+                  const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+                  console.log(`  [${elapsed}m] ${totalCombos.toLocaleString()} combos, ${puzzles.length.toLocaleString()} unique`);
+                }
+              }
+              
+              console.log(`  ✓ ${pkmn.name}: ${uniqueCount}/${combinations.length} unique`);
+            }
+            
+            const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+            console.log(`\n✅ Gen ${targetGen} COMPLETE: ${puzzles.length.toLocaleString()} puzzles in ${totalTime}m`);
+            
+            // Save
+            const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${targetGen}-complete.csv`);
+            const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+            const csvRows = puzzles.map(p => 
+              `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
+            ).join('\n');
+            
+            fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+            fs.writeFileSync(csvPath, csvHeader + csvRows);
+            
+            const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
+            console.log(`✓ Saved to ${csvPath} (${fileSize} MB)`);
+            
+          } catch (error) {
+            console.error(`❌ Error in Gen ${targetGen}:`, error);
+          }
+        }
+        
+        console.log("\n🎉 COMPLETE GENERATION FINISHED!");
+      })();
+      
+    } catch (error) {
+      console.error("Error starting complete generation:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nell'avvio della generazione completa", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   // ADMIN ENDPOINT - Download puzzle file
   app.get("/api/admin/download-puzzle/:gen", async (req, res) => {
     try {
@@ -1414,7 +1592,11 @@ export async function registerRoutes(
         return res.status(400).json({ success: false, message: "Generazione non valida (1-9)" });
       }
       
-      const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
+      // Check for complete file first, then regular file
+      const completeFile = path.join(process.cwd(), 'data', `puzzles-gen${gen}-complete.csv`);
+      const regularFile = path.join(process.cwd(), 'data', `puzzles-gen${gen}.csv`);
+      
+      const csvPath = fs.existsSync(completeFile) ? completeFile : regularFile;
       
       if (!fs.existsSync(csvPath)) {
         return res.status(404).json({ 
@@ -1448,7 +1630,9 @@ export async function registerRoutes(
         .map(f => {
           const filePath = path.join(dataDir, f);
           const stats = fs.statSync(filePath);
-          const gen = parseInt(f.match(/puzzles-gen(\d+)\.csv/)?.[1] || '0');
+          const genMatch = f.match(/puzzles-gen(\d+)(-complete)?\.csv/);
+          const gen = parseInt(genMatch?.[1] || '0');
+          const isComplete = !!genMatch?.[2];
           
           // Count lines in file (excluding header)
           const content = fs.readFileSync(filePath, 'utf-8');
@@ -1459,7 +1643,8 @@ export async function registerRoutes(
             generation: gen,
             size: stats.size,
             puzzleCount: lines,
-            created: stats.mtime
+            created: stats.mtime,
+            isComplete
           };
         })
         .sort((a, b) => a.generation - b.generation);
