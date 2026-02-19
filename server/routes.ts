@@ -1486,11 +1486,6 @@ export async function registerRoutes(
                 console.log(`  Loaded moves for ${i + 1}/${filtered.length} Pokemon`);
               }
             }
-              
-              if ((i + 1) % 50 === 0) {
-                console.log(`  Loaded ${i + 1}/${filtered.length} Pokemon`);
-              }
-            }
             
             console.log("Generating ALL unique combinations...");
             const puzzles: Array<{
