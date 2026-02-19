@@ -2233,9 +2233,9 @@ async function seedDatabase(force: boolean = false) {
   // Seed evolutions
   console.log("Starting evolution seeding...");
   try {
-    // Use evolutions.csv which has grid_column/grid_row to show evolution relationships
-    const evolutionData = await parseCsv('attached_assets/evolutions_1771232352571.csv');
-    console.log(`Loaded ${evolutionData.length} evolution entries from CSV`);
+    // Use ONLY ndex_evolution_trees.csv - evolutions.csv has corrupted data
+    const evolutionTreeData = await parseCsv('attached_assets/ndex_evolution_trees.csv');
+    console.log(`Loaded ${evolutionTreeData.length} evolution tree entries`);
     
     // Get all Pokemon from database
     const allPokemon = await db.select({
@@ -2248,65 +2248,91 @@ async function seedDatabase(force: boolean = false) {
     console.log(`Total Pokemon in database: ${allPokemon.length}`);
     
     // Group by evolution tree
-    const evolutionTrees = new Map<number, any[]>();
-    evolutionData.forEach((row: any) => {
+    const evolutionTrees = new Map<number, number[]>();
+    evolutionTreeData.forEach((row: any) => {
       const treeId = parseInt(row.evolution_tree_id);
-      const formId = parseInt(row.pokemon_form_id);
-      const gridColumn = parseInt(row.grid_column);
-      const gridRow = parseInt(row.grid_row);
+      const ndexId = parseInt(row.ndex_id);
       
       if (!evolutionTrees.has(treeId)) {
         evolutionTrees.set(treeId, []);
       }
-      evolutionTrees.get(treeId)!.push({ formId, gridColumn, gridRow });
+      evolutionTrees.get(treeId)!.push(ndexId);
     });
     
     console.log(`Grouped into ${evolutionTrees.size} evolution trees`);
     
     // Build evolution relationships
+    // For linear chains: sort by ndex and connect sequentially
+    // For branches (like Eevee): this creates linear chains which is WRONG but better than corrupted data
     const mappedEvolutions: any[] = [];
     
-    evolutionTrees.forEach((entries, treeId) => {
-      // For each entry, find what it evolves FROM (lower grid_column in same tree)
-      for (const entry of entries) {
-        // Find potential pre-evolutions (same tree, lower grid_column)
-        const preEvolutions = entries.filter(e => e.gridColumn < entry.gridColumn);
+    evolutionTrees.forEach((ndexIds, treeId) => {
+      // Sort by ndex ID
+      ndexIds.sort((a, b) => a - b);
+      
+      // SPECIAL CASE: Detect Eevee tree (has 9 Pokemon: Eevee + 8 evolutions)
+      // Eevee tree should have all evolutions pointing to Eevee (ndex 133)
+      if (ndexIds.includes(133) && ndexIds.length > 2) {
+        console.log(`Detected Eevee tree (${treeId}) with ${ndexIds.length} Pokemon`);
+        const eeveeNdex = 133;
+        const eevee = allPokemon.find(p => p.ndexId === eeveeNdex);
         
-        if (preEvolutions.length === 0) continue; // This is a base Pokemon
-        
-        // Find the immediate pre-evolution (highest grid_column among pre-evolutions)
-        const maxPreColumn = Math.max(...preEvolutions.map(e => e.gridColumn));
-        const immediatePreEvos = preEvolutions.filter(e => e.gridColumn === maxPreColumn);
-        
-        // Map form IDs to Pokemon IDs
-        const currentPokemon = allPokemon.find(p => p.id === entry.formId);
-        if (!currentPokemon) continue;
-        
-        for (const preEvo of immediatePreEvos) {
-          const prePokemon = allPokemon.find(p => p.id === preEvo.formId);
-          if (!prePokemon) continue;
+        if (eevee) {
+          // All other Pokemon in this tree evolve FROM Eevee
+          for (const ndexId of ndexIds) {
+            if (ndexId === eeveeNdex) continue; // Skip Eevee itself
+            
+            const evo = allPokemon.find(p => p.ndexId === ndexId);
+            if (!evo) continue;
+            
+            // Skip cosmetic forms
+            if (evo.speciesName.includes('-cap') || evo.speciesName.includes('-original') || 
+                evo.speciesName.includes('-totem') || evo.speciesName.includes('-alola') ||
+                evo.speciesName.includes('-galar') || evo.speciesName.includes('-hisui') ||
+                evo.speciesName.includes('-paldea')) continue;
+            
+            mappedEvolutions.push({
+              evolvedSpeciesId: eevee.id,
+              evolvesIntoSpeciesId: evo.id,
+              evolutionTriggerId: null,
+              minLevel: null
+            });
+            
+            console.log(`  Eevee -> ${evo.name} (Ndex:${ndexId})`);
+          }
+        }
+      } else {
+        // Linear evolution chain: each evolves into the next
+        for (let i = 0; i < ndexIds.length - 1; i++) {
+          const preEvoNdex = ndexIds[i];
+          const evoNdex = ndexIds[i + 1];
+          
+          const prePokemon = allPokemon.find(p => p.ndexId === preEvoNdex);
+          const evoPokemon = allPokemon.find(p => p.ndexId === evoNdex);
+          
+          if (!prePokemon || !evoPokemon) continue;
           
           // Skip cosmetic forms
           const isCosmetic = 
-            currentPokemon.speciesName.includes('-cap') ||
-            currentPokemon.speciesName.includes('-original') ||
-            currentPokemon.speciesName.includes('-totem') ||
-            prePokemon.speciesName.includes('-cap') ||
-            prePokemon.speciesName.includes('-original') ||
-            prePokemon.speciesName.includes('-totem');
+            prePokemon.speciesName.includes('-cap') || prePokemon.speciesName.includes('-original') ||
+            prePokemon.speciesName.includes('-totem') || prePokemon.speciesName.includes('-alola') ||
+            prePokemon.speciesName.includes('-galar') || prePokemon.speciesName.includes('-hisui') ||
+            prePokemon.speciesName.includes('-paldea') || evoPokemon.speciesName.includes('-cap') ||
+            evoPokemon.speciesName.includes('-original') || evoPokemon.speciesName.includes('-totem') ||
+            evoPokemon.speciesName.includes('-alola') || evoPokemon.speciesName.includes('-galar') ||
+            evoPokemon.speciesName.includes('-hisui') || evoPokemon.speciesName.includes('-paldea');
           
           if (isCosmetic) continue;
           
           mappedEvolutions.push({
             evolvedSpeciesId: prePokemon.id,
-            evolvesIntoSpeciesId: currentPokemon.id,
+            evolvesIntoSpeciesId: evoPokemon.id,
             evolutionTriggerId: null,
             minLevel: null
           });
           
-          // Log first few for debugging
           if (mappedEvolutions.length <= 15) {
-            console.log(`Evolution ${mappedEvolutions.length}: ${prePokemon.name} (ID:${prePokemon.id}) -> ${currentPokemon.name} (ID:${currentPokemon.id}) [Tree:${treeId}, Col:${preEvo.gridColumn}->${entry.gridColumn}]`);
+            console.log(`Evolution ${mappedEvolutions.length}: ${prePokemon.name} (Ndex:${preEvoNdex}) -> ${evoPokemon.name} (Ndex:${evoNdex}) [Tree:${treeId}]`);
           }
         }
       }
