@@ -79,6 +79,13 @@ export const evolutions = pgTable("evolutions", {
   minLevel: integer("min_level"), // Minimum level for evolution
 });
 
+export const evolutionTrees = pgTable("evolution_trees", {
+  ndexId: integer("ndex_id").primaryKey(), // National Dex number
+  evolutionTreeId: integer("evolution_tree_id").notNull(), // Family ID (e.g., all Eevee evolutions share same ID)
+}, (table) => ({
+  treeIdIdx: index("evolution_trees_tree_id_idx").on(table.evolutionTreeId),
+}));
+
 // === LEADERBOARD ===
 
 export const highScores = pgTable("high_scores", {
