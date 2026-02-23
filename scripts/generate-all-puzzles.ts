@@ -281,18 +281,20 @@ async function generateAllPuzzles(gen: number) {
   allCandidates.sort((a, b) => b.rarityScore - a.rarityScore);
   console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
   
-  // STEP 6: Apply variation check only (NO cap per Pokemon for complete version)
-  console.log("✨ STEP 6: Applying strict variation check (keeping all unique puzzles)...");
+  // STEP 6: Apply variation check and write incrementally to CSV
+  console.log("✨ STEP 6: Applying strict variation check and writing to CSV...");
   
-  const selectedPuzzles: Array<{
-    pokemonId: number;
-    pokemonName: string;
-    ndexId: number;
-    moveIds: string;
-    generation: number;
-  }> = [];
+  // Prepare CSV file
+  const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}-complete.csv`);
+  fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+  const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+  fs.writeFileSync(csvPath, csvHeader);
   
   const pokemonPreviousCombos = new Map<number, Set<string>>();
+  const pokemonPuzzleCount = new Map<number, number>();
+  let totalPuzzles = 0;
+  let buffer: string[] = [];
+  const BUFFER_SIZE = 1000; // Write every 1000 puzzles
   
   for (const candidate of allCandidates) {
     // Check variation
@@ -308,45 +310,45 @@ async function generateAllPuzzles(gen: number) {
       continue;
     }
     
-    // Add puzzle
-    selectedPuzzles.push({
-      pokemonId: candidate.pokemonId,
-      pokemonName: candidate.pokemonName,
-      ndexId: candidate.ndexId,
-      moveIds: comboKey,
-      generation: gen
-    });
-    
+    // Add to buffer
+    buffer.push(`${candidate.pokemonId},${candidate.pokemonName},${candidate.ndexId},"${comboKey}",${gen}`);
     previousCombos.add(comboKey);
+    pokemonPuzzleCount.set(candidate.pokemonId, (pokemonPuzzleCount.get(candidate.pokemonId) || 0) + 1);
+    totalPuzzles++;
     
-    if (selectedPuzzles.length % 10000 === 0) {
+    // Write buffer to file when it reaches BUFFER_SIZE
+    if (buffer.length >= BUFFER_SIZE) {
+      fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
+      buffer = [];
+    }
+    
+    if (totalPuzzles % 10000 === 0) {
       const uniquePokemon = pokemonPreviousCombos.size;
-      console.log(`   Progress: ${selectedPuzzles.length.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
+      console.log(`   Progress: ${totalPuzzles.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
     }
   }
   
-  console.log(`   ✓ Selected ${selectedPuzzles.length.toLocaleString()} puzzles\n`);
+  // Write remaining buffer
+  if (buffer.length > 0) {
+    fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
+  }
+  
+  console.log(`   ✓ Selected ${totalPuzzles.toLocaleString()} puzzles\n`);
   
   // STEP 7: Statistics
   console.log("📈 STEP 7: Statistics");
   
-  const distribution = new Map<number, number>();
-  for (const puzzle of selectedPuzzles) {
-    const count = distribution.get(puzzle.pokemonId) || 0;
-    distribution.set(puzzle.pokemonId, count + 1);
-  }
-  
-  const pokemonWithPuzzles = distribution.size;
-  const avgPuzzlesPerPokemon = (selectedPuzzles.length / pokemonWithPuzzles).toFixed(1);
-  const maxPuzzles = Math.max(...Array.from(distribution.values()));
-  const minPuzzles = Math.min(...Array.from(distribution.values()));
+  const pokemonWithPuzzles = pokemonPuzzleCount.size;
+  const avgPuzzlesPerPokemon = (totalPuzzles / pokemonWithPuzzles).toFixed(1);
+  const maxPuzzles = Math.max(...Array.from(pokemonPuzzleCount.values()));
+  const minPuzzles = Math.min(...Array.from(pokemonPuzzleCount.values()));
   
   const countDistribution = new Map<number, number>();
-  for (const count of distribution.values()) {
+  for (const count of pokemonPuzzleCount.values()) {
     countDistribution.set(count, (countDistribution.get(count) || 0) + 1);
   }
   
-  console.log(`   Total puzzles: ${selectedPuzzles.length.toLocaleString()}`);
+  console.log(`   Total puzzles: ${totalPuzzles.toLocaleString()}`);
   console.log(`   Pokemon with puzzles: ${pokemonWithPuzzles}/${filteredPokemon.length}`);
   console.log(`   Average per Pokemon: ${avgPuzzlesPerPokemon}`);
   console.log(`   Min/Max per Pokemon: ${minPuzzles}/${maxPuzzles}`);
@@ -354,21 +356,9 @@ async function generateAllPuzzles(gen: number) {
   for (const [count, numPokemon] of Array.from(countDistribution.entries()).sort((a, b) => a[0] - b[0])) {
     console.log(`     • ${numPokemon} Pokemon with ${count} puzzle${count > 1 ? 's' : ''}`);
   }
-  console.log();
-  
-  // STEP 8: Write to CSV
-  console.log("💾 STEP 8: Writing to CSV...");
-  const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}-complete.csv`);
-  const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-  const csvRows = selectedPuzzles.map(p => 
-    `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
-  ).join('\n');
-  
-  fs.mkdirSync(path.dirname(csvPath), { recursive: true });
-  fs.writeFileSync(csvPath, csvHeader + csvRows);
   
   const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
-  console.log(`   ✓ Saved to ${csvPath} (${fileSize} MB)\n`);
+  console.log(`   File: ${csvPath} (${fileSize} MB)\n`);
   
   const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
   console.log(`${'='.repeat(70)}`);
@@ -376,10 +366,10 @@ async function generateAllPuzzles(gen: number) {
   console.log(`   Time: ${totalTime} minutes`);
   console.log(`   Combinations checked: ${totalCombinationsChecked.toLocaleString()}`);
   console.log(`   Unique candidates: ${allCandidates.length.toLocaleString()}`);
-  console.log(`   Final puzzles: ${selectedPuzzles.length.toLocaleString()}`);
+  console.log(`   Final puzzles: ${totalPuzzles.toLocaleString()}`);
   console.log(`${'='.repeat(70)}\n`);
   
-  return selectedPuzzles.length;
+  return totalPuzzles;
 }
 
 async function main() {
