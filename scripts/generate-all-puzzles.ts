@@ -58,6 +58,32 @@ async function getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]>
   return result;
 }
 
+// Calculate move frequency across all Pokemon
+function calculateMoveFrequencies(allPokemonMoves: Map<number, Set<number>>): Map<number, number> {
+  const frequencies = new Map<number, number>();
+  
+  for (const moves of allPokemonMoves.values()) {
+    for (const moveId of moves) {
+      frequencies.set(moveId, (frequencies.get(moveId) || 0) + 1);
+    }
+  }
+  
+  return frequencies;
+}
+
+// Calculate score for a moveset (lower score = more common moves = less desirable)
+function calculateMovesetScore(moveIds: number[], moveFrequencies: Map<number, number>, totalPokemon: number): number {
+  let score = 0;
+  
+  for (const moveId of moveIds) {
+    const frequency = moveFrequencies.get(moveId) || 0;
+    const rarity = totalPokemon - frequency; // Higher rarity = less common
+    score += rarity;
+  }
+  
+  return score;
+}
+
 // Generate all combinations of 4 moves from a list
 function* generateCombinations(moves: number[], size: number): Generator<number[]> {
   if (size === 0) {
@@ -72,6 +98,30 @@ function* generateCombinations(moves: number[], size: number): Generator<number[
     for (const combo of generateCombinations(remaining, size - 1)) {
       yield [move, ...combo];
     }
+  }
+}
+
+// Generate all combinations sorted by rarity score
+function* generateWeightedCombinations(
+  moves: number[], 
+  size: number,
+  moveFrequencies: Map<number, number>,
+  totalPokemon: number
+): Generator<{ combo: number[], score: number }> {
+  // Generate all combinations
+  const allCombos: Array<{ combo: number[], score: number }> = [];
+  
+  for (const combo of generateCombinations(moves, size)) {
+    const score = calculateMovesetScore(combo, moveFrequencies, totalPokemon);
+    allCombos.push({ combo, score });
+  }
+  
+  // Sort by score (descending - higher score = rarer moves = better)
+  allCombos.sort((a, b) => b.score - a.score);
+  
+  // Yield in order of rarity
+  for (const item of allCombos) {
+    yield item;
   }
 }
 
@@ -182,8 +232,26 @@ async function generateAllPuzzles(gen: number) {
   
   console.log(`✓ Loaded moves for all ${filteredPokemon.length} Pokemon\n`);
   
+  // Calculate move frequencies
+  console.log("Calculating move frequencies for rarity weighting...");
+  const moveFrequencies = calculateMoveFrequencies(allPokemonMoves);
+  
+  // Log most common moves
+  const sortedMoves = Array.from(moveFrequencies.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20);
+  
+  console.log("\nTop 20 most common moves (will be deprioritized):");
+  for (const [moveId, count] of sortedMoves) {
+    const moveInfo = await db.select({ name: moves.name })
+      .from(moves)
+      .where(eq(moves.id, moveId))
+      .limit(1);
+    console.log(`  ${moveInfo[0]?.name || moveId}: ${count} Pokemon (${((count / filteredPokemon.length) * 100).toFixed(1)}%)`);
+  }
+  
   // Generate all unique puzzles
-  console.log("Generating all unique 4-move combinations...");
+  console.log("\nGenerating all unique 4-move combinations (sorted by rarity)...");
   const puzzles: Array<{
     pokemonId: number;
     pokemonName: string;
@@ -209,8 +277,8 @@ async function generateAllPuzzles(gen: number) {
     let pokemonUnique = 0;
     const pokemonPreviousCombos = new Set<string>();
     
-    // Generate all 4-move combinations
-    for (const combo of generateCombinations(moveIds, 4)) {
+    // Generate all 4-move combinations (sorted by rarity)
+    for (const { combo, score } of generateWeightedCombinations(moveIds, 4, moveFrequencies, filteredPokemon.length)) {
       totalCombinations++;
       pokemonCombos++;
       

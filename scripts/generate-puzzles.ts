@@ -70,21 +70,63 @@ async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<nu
   return pokemonMovesList.map(m => m.moveId);
 }
 
-// Generate combinations of 4 moves from a list (limited version)
-function* generateLimitedCombinations(moves: number[], maxCombos: number): Generator<number[]> {
-  let count = 0;
-  const n = moves.length;
+// Calculate move frequency across all Pokemon
+function calculateMoveFrequencies(allPokemonMoves: Map<number, Set<number>>): Map<number, number> {
+  const frequencies = new Map<number, number>();
   
-  // Generate all 4-move combinations using nested loops
+  for (const moves of allPokemonMoves.values()) {
+    for (const moveId of moves) {
+      frequencies.set(moveId, (frequencies.get(moveId) || 0) + 1);
+    }
+  }
+  
+  return frequencies;
+}
+
+// Calculate score for a moveset (lower score = more common moves = less desirable)
+function calculateMovesetScore(moveIds: number[], moveFrequencies: Map<number, number>, totalPokemon: number): number {
+  let score = 0;
+  
+  for (const moveId of moveIds) {
+    const frequency = moveFrequencies.get(moveId) || 0;
+    const rarity = totalPokemon - frequency; // Higher rarity = less common
+    score += rarity;
+  }
+  
+  return score;
+}
+
+// Generate combinations of 4 moves from a list (limited version with weighted selection)
+function* generateWeightedCombinations(
+  moves: number[], 
+  maxCombos: number,
+  moveFrequencies: Map<number, number>,
+  totalPokemon: number
+): Generator<{ combo: number[], score: number }> {
+  const n = moves.length;
+  const combinations: Array<{ combo: number[], score: number }> = [];
+  
+  // Generate all combinations up to maxCombos
+  let count = 0;
   for (let i = 0; i < n - 3 && count < maxCombos; i++) {
     for (let j = i + 1; j < n - 2 && count < maxCombos; j++) {
       for (let k = j + 1; k < n - 1 && count < maxCombos; k++) {
         for (let l = k + 1; l < n && count < maxCombos; l++) {
-          yield [moves[i], moves[j], moves[k], moves[l]];
+          const combo = [moves[i], moves[j], moves[k], moves[l]];
+          const score = calculateMovesetScore(combo, moveFrequencies, totalPokemon);
+          combinations.push({ combo, score });
           count++;
         }
       }
     }
+  }
+  
+  // Sort by score (descending - higher score = rarer moves = better)
+  combinations.sort((a, b) => b.score - a.score);
+  
+  // Yield combinations in order of rarity
+  for (const item of combinations) {
+    yield item;
   }
 }
 
@@ -170,7 +212,25 @@ async function generatePuzzles() {
       }
     }
     
-    console.log("Generating unique puzzles (up to 10,000)...");
+    // Calculate move frequencies
+    console.log("Calculating move frequencies...");
+    const moveFrequencies = calculateMoveFrequencies(allPokemonMoves);
+    
+    // Log most common moves
+    const sortedMoves = Array.from(moveFrequencies.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20);
+    
+    console.log("\nTop 20 most common moves:");
+    for (const [moveId, count] of sortedMoves) {
+      const moveInfo = await db.select({ name: moves.name })
+        .from(moves)
+        .where(eq(moves.id, moveId))
+        .limit(1);
+      console.log(`  ${moveInfo[0]?.name || moveId}: ${count} Pokemon (${((count / filteredPokemon.length) * 100).toFixed(1)}%)`);
+    }
+    
+    console.log("\nGenerating unique puzzles (up to 10,000) with rarity weighting...");
     const puzzles: Array<{
       pokemonId: number;
       pokemonName: string;
@@ -203,8 +263,8 @@ async function generatePuzzles() {
       // Check many combinations (up to 50,000 per Pokemon)
       const maxCombosToCheck = Math.min(50000, totalPossible);
       
-      // Generate and check combinations
-      for (const combo of generateLimitedCombinations(moveIds, maxCombosToCheck)) {
+      // Generate and check combinations (sorted by rarity)
+      for (const { combo, score } of generateWeightedCombinations(moveIds, maxCombosToCheck, moveFrequencies, filteredPokemon.length)) {
         if (foundForPokemon >= maxPerPokemon) break;
         if (puzzles.length >= MAX_PUZZLES) break;
         
