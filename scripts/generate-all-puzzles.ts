@@ -221,19 +221,21 @@ async function generateAllPuzzles(gen: number) {
   }
   console.log();
   
-  // STEP 4: Generate all unique puzzles
-  console.log("🎯 STEP 4: Generating all unique puzzle candidates...");
+  // STEP 4: Generate puzzles with streaming to CSV (no memory overhead)
+  console.log("🎯 STEP 4: Generating puzzles and streaming to CSV...");
   
-  interface PuzzleCandidate {
-    pokemonId: number;
-    pokemonName: string;
-    ndexId: number;
-    moveIds: number[];
-    rarityScore: number;
-  }
+  // Prepare CSV file
+  const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}-complete.csv`);
+  fs.mkdirSync(path.dirname(csvPath), { recursive: true });
+  const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
+  fs.writeFileSync(csvPath, csvHeader);
   
-  const allCandidates: PuzzleCandidate[] = [];
+  const pokemonPreviousCombos = new Map<number, Set<string>>();
+  const pokemonPuzzleCount = new Map<number, number>();
+  let totalPuzzles = 0;
   let totalCombinationsChecked = 0;
+  let buffer: string[] = [];
+  const BUFFER_SIZE = 1000;
   
   for (let i = 0; i < filteredPokemon.length; i++) {
     const pkmn = filteredPokemon[i];
@@ -247,84 +249,48 @@ async function generateAllPuzzles(gen: number) {
     let pokemonUnique = 0;
     const pokemonStartTime = Date.now();
     
+    // Initialize variation tracking
+    if (!pokemonPreviousCombos.has(pkmn.id)) {
+      pokemonPreviousCombos.set(pkmn.id, new Set());
+    }
+    const previousCombos = pokemonPreviousCombos.get(pkmn.id)!;
+    
     for (const combo of generateCombinations(moveIds)) {
       totalCombinationsChecked++;
       
-      if (isUniqueMoveset(combo, pkmn.id, allPokemonMoves)) {
-        const rarityScore = calculateRarityScore(combo, moveFrequencies, filteredPokemon.length);
-        
-        allCandidates.push({
-          pokemonId: pkmn.id,
-          pokemonName: pkmn.name,
-          ndexId: pkmn.ndexId,
-          moveIds: combo,
-          rarityScore
-        });
-        
-        pokemonUnique++;
+      // Check uniqueness
+      if (!isUniqueMoveset(combo, pkmn.id, allPokemonMoves)) {
+        continue;
       }
       
-      if (totalCombinationsChecked % 10000 === 0) {
+      // Check variation (at least 3 different moves)
+      if (!hasMinimumVariation(combo, previousCombos)) {
+        continue;
+      }
+      
+      // Add to CSV buffer
+      const comboKey = combo.join(',');
+      buffer.push(`${pkmn.id},${pkmn.name},${pkmn.ndexId},"${comboKey}",${gen}`);
+      previousCombos.add(comboKey);
+      pokemonPuzzleCount.set(pkmn.id, (pokemonPuzzleCount.get(pkmn.id) || 0) + 1);
+      totalPuzzles++;
+      pokemonUnique++;
+      
+      // Write buffer when full
+      if (buffer.length >= BUFFER_SIZE) {
+        fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
+        buffer = [];
+      }
+      
+      if (totalCombinationsChecked % 50000 === 0) {
         const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-        console.log(`   [${elapsed}m] Checked ${totalCombinationsChecked.toLocaleString()} combos, found ${allCandidates.length.toLocaleString()} unique`);
+        console.log(`   [${elapsed}m] Checked ${totalCombinationsChecked.toLocaleString()} combos, saved ${totalPuzzles.toLocaleString()} puzzles`);
       }
     }
     
     const pokemonTime = ((Date.now() - pokemonStartTime) / 1000).toFixed(1);
-    console.log(`   ✓ ${pkmn.name}: ${pokemonUnique} unique puzzles (${pokemonTime}s)`);
-  }
-  
-  console.log(`   ✓ Found ${allCandidates.length.toLocaleString()} unique puzzle candidates\n`);
-  
-  // STEP 5: Sort by rarity
-  console.log("🔄 STEP 5: Sorting by rarity score...");
-  allCandidates.sort((a, b) => b.rarityScore - a.rarityScore);
-  console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
-  
-  // STEP 6: Apply variation check and write incrementally to CSV
-  console.log("✨ STEP 6: Applying strict variation check and writing to CSV...");
-  
-  // Prepare CSV file
-  const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}-complete.csv`);
-  fs.mkdirSync(path.dirname(csvPath), { recursive: true });
-  const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-  fs.writeFileSync(csvPath, csvHeader);
-  
-  const pokemonPreviousCombos = new Map<number, Set<string>>();
-  const pokemonPuzzleCount = new Map<number, number>();
-  let totalPuzzles = 0;
-  let buffer: string[] = [];
-  const BUFFER_SIZE = 1000; // Write every 1000 puzzles
-  
-  for (const candidate of allCandidates) {
-    // Check variation
-    if (!pokemonPreviousCombos.has(candidate.pokemonId)) {
-      pokemonPreviousCombos.set(candidate.pokemonId, new Set());
-    }
-    
-    const previousCombos = pokemonPreviousCombos.get(candidate.pokemonId)!;
-    const comboKey = candidate.moveIds.join(',');
-    
-    // Only skip if 2+ moves are the same (require at least 3 different moves)
-    if (!hasMinimumVariation(candidate.moveIds, previousCombos)) {
-      continue;
-    }
-    
-    // Add to buffer
-    buffer.push(`${candidate.pokemonId},${candidate.pokemonName},${candidate.ndexId},"${comboKey}",${gen}`);
-    previousCombos.add(comboKey);
-    pokemonPuzzleCount.set(candidate.pokemonId, (pokemonPuzzleCount.get(candidate.pokemonId) || 0) + 1);
-    totalPuzzles++;
-    
-    // Write buffer to file when it reaches BUFFER_SIZE
-    if (buffer.length >= BUFFER_SIZE) {
-      fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
-      buffer = [];
-    }
-    
-    if (totalPuzzles % 10000 === 0) {
-      const uniquePokemon = pokemonPreviousCombos.size;
-      console.log(`   Progress: ${totalPuzzles.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
+    if (pokemonUnique > 0) {
+      console.log(`   ✓ ${pkmn.name}: ${pokemonUnique} puzzles (${pokemonTime}s)`);
     }
   }
   
@@ -333,10 +299,10 @@ async function generateAllPuzzles(gen: number) {
     fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
   }
   
-  console.log(`   ✓ Selected ${totalPuzzles.toLocaleString()} puzzles\n`);
+  console.log(`   ✓ Generated ${totalPuzzles.toLocaleString()} puzzles\n`);
   
-  // STEP 7: Statistics
-  console.log("📈 STEP 7: Statistics");
+  // STEP 5: Statistics
+  console.log("📈 STEP 5: Statistics");
   
   const pokemonWithPuzzles = pokemonPuzzleCount.size;
   const avgPuzzlesPerPokemon = (totalPuzzles / pokemonWithPuzzles).toFixed(1);
@@ -365,7 +331,6 @@ async function generateAllPuzzles(gen: number) {
   console.log(`✅ GENERATION COMPLETE!`);
   console.log(`   Time: ${totalTime} minutes`);
   console.log(`   Combinations checked: ${totalCombinationsChecked.toLocaleString()}`);
-  console.log(`   Unique candidates: ${allCandidates.length.toLocaleString()}`);
   console.log(`   Final puzzles: ${totalPuzzles.toLocaleString()}`);
   console.log(`${'='.repeat(70)}\n`);
   
