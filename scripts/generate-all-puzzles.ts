@@ -1,6 +1,6 @@
 import { db } from "../server/db";
 import { pokemon, moves, pokemonMoves, versions } from "../shared/schema";
-import { lte, and, inArray } from "drizzle-orm";
+import { lte, and, inArray, eq } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
@@ -213,7 +213,7 @@ async function generateAllPuzzles(gen: number) {
   for (const [moveId, count] of sortedByFrequency) {
     const moveInfo = await db.select({ name: moves.name })
       .from(moves)
-      .where(lte(moves.id, moveId))
+      .where(eq(moves.id, moveId))
       .limit(1);
     const percentage = ((count / filteredPokemon.length) * 100).toFixed(1);
     console.log(`     • ${moveInfo[0]?.name || `Move ${moveId}`}: ${count} Pokemon (${percentage}%)`);
