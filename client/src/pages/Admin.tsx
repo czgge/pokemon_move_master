@@ -9,6 +9,7 @@ export default function Admin() {
   const [indexLoading, setIndexLoading] = useState(false);
   const [puzzleLoading, setPuzzleLoading] = useState(false);
   const [selectedGen, setSelectedGen] = useState(1);
+  const [selectedGens, setSelectedGens] = useState<number[]>([1]); // Multi-select for generations
   const [puzzleFiles, setPuzzleFiles] = useState<Array<{
     filename: string;
     generation: number;
@@ -23,6 +24,22 @@ export default function Admin() {
   useEffect(() => {
     loadPuzzleFiles();
   }, []);
+
+  const toggleGenSelection = (gen: number) => {
+    setSelectedGens(prev => 
+      prev.includes(gen) 
+        ? prev.filter(g => g !== gen)
+        : [...prev, gen].sort((a, b) => a - b)
+    );
+  };
+
+  const selectAllGens = () => {
+    setSelectedGens([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  };
+
+  const deselectAllGens = () => {
+    setSelectedGens([]);
+  };
 
   const loadPuzzleFiles = async () => {
     try {
@@ -85,22 +102,35 @@ export default function Admin() {
   };
 
   const handleGeneratePuzzles = async () => {
+    if (selectedGens.length === 0) {
+      setMessage({ type: "error", text: "Seleziona almeno una generazione" });
+      return;
+    }
+
     setPuzzleLoading(true);
     setMessage(null);
 
     try {
-      const res = await fetch("/api/admin/generate-puzzles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ generation: selectedGen }),
-      });
-      const data = await res.json();
+      // Generate for each selected generation
+      for (const gen of selectedGens) {
+        const res = await fetch("/api/admin/generate-puzzles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ generation: gen }),
+        });
+        const data = await res.json();
 
-      if (data.success) {
-        setMessage({ type: "success", text: data.message });
-      } else {
-        setMessage({ type: "error", text: data.message || "Errore nella generazione puzzle" });
+        if (!data.success) {
+          setMessage({ type: "error", text: `Errore Gen ${gen}: ${data.message}` });
+          break;
+        }
       }
+      
+      setMessage({ 
+        type: "success", 
+        text: `Generazione RAPIDA avviata per Gen ${selectedGens.join(', ')}! Controlla i log.` 
+      });
+      setTimeout(loadPuzzleFiles, 5000);
     } catch (error) {
       setMessage({ type: "error", text: "Errore di connessione al server" });
     } finally {
@@ -132,7 +162,13 @@ export default function Admin() {
   };
 
   const handleGenerateCompletePuzzles = async () => {
-    if (!confirm("⚠️ La generazione COMPLETA può richiedere 1-4 ore per generazione. Continuare?")) {
+    if (selectedGens.length === 0) {
+      setMessage({ type: "error", text: "Seleziona almeno una generazione" });
+      return;
+    }
+
+    const totalHours = selectedGens.length * 2; // Estimate 2 hours per gen
+    if (!confirm(`⚠️ La generazione COMPLETA può richiedere ~${totalHours} ore per ${selectedGens.length} generazioni. Continuare?`)) {
       return;
     }
     
@@ -140,19 +176,26 @@ export default function Admin() {
     setMessage(null);
 
     try {
-      const res = await fetch("/api/admin/generate-complete-puzzles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ generation: selectedGen }),
-      });
-      const data = await res.json();
+      // Generate for each selected generation
+      for (const gen of selectedGens) {
+        const res = await fetch("/api/admin/generate-complete-puzzles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ generation: gen }),
+        });
+        const data = await res.json();
 
-      if (data.success) {
-        setMessage({ type: "success", text: data.message });
-        setTimeout(loadPuzzleFiles, 10000);
-      } else {
-        setMessage({ type: "error", text: data.message || "Errore nella generazione completa" });
+        if (!data.success) {
+          setMessage({ type: "error", text: `Errore Gen ${gen}: ${data.message}` });
+          break;
+        }
       }
+
+      setMessage({ 
+        type: "success", 
+        text: `Generazione COMPLETA avviata per Gen ${selectedGens.join(', ')}! Controlla i log.` 
+      });
+      setTimeout(loadPuzzleFiles, 10000);
     } catch (error) {
       setMessage({ type: "error", text: "Errore di connessione al server" });
     } finally {
@@ -320,7 +363,7 @@ export default function Admin() {
           </div>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>
-              Genera un file CSV con puzzle unici per una generazione specifica.
+              Genera un file CSV con puzzle unici per le generazioni selezionate.
             </p>
             <p className="font-bold text-foreground">
               💡 Modalità RAPIDA: ~3 puzzle per Pokemon (~5-20 minuti per gen)
@@ -332,27 +375,65 @@ export default function Admin() {
               Controlla i log del server per il progresso.
             </p>
           </div>
-          <div className="flex gap-3 items-end">
-            <div className="flex-1">
-              <label className="text-sm font-mono text-muted-foreground mb-2 block">
-                Generazione:
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-mono text-muted-foreground">
+                Seleziona Generazioni:
               </label>
-              <select
-                value={selectedGen}
-                onChange={(e) => setSelectedGen(Number(e.target.value))}
-                className="w-full p-2 pixel-border-sm bg-background text-foreground font-mono"
-                disabled={puzzleLoading}
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(gen => (
-                  <option key={gen} value={gen}>Gen {gen}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <button
+                  onClick={selectAllGens}
+                  className="text-xs font-mono text-blue-600 hover:underline"
+                  disabled={puzzleLoading}
+                >
+                  Tutte
+                </button>
+                <button
+                  onClick={deselectAllGens}
+                  className="text-xs font-mono text-red-600 hover:underline"
+                  disabled={puzzleLoading}
+                >
+                  Nessuna
+                </button>
+              </div>
             </div>
+            
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(gen => (
+                <label
+                  key={gen}
+                  className={`flex items-center gap-2 p-2 pixel-border-sm cursor-pointer transition-colors ${
+                    selectedGens.includes(gen)
+                      ? 'bg-blue-100 border-blue-400'
+                      : 'bg-muted/30 hover:bg-muted/50'
+                  } ${puzzleLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedGens.includes(gen)}
+                    onChange={() => toggleGenSelection(gen)}
+                    disabled={puzzleLoading}
+                    className="w-4 h-4"
+                  />
+                  <span className="font-mono text-sm">Gen {gen}</span>
+                </label>
+              ))}
+            </div>
+            
+            {selectedGens.length > 0 && (
+              <p className="text-xs text-center text-muted-foreground font-mono">
+                {selectedGens.length} generazione{selectedGens.length > 1 ? 'i' : ''} selezionata{selectedGens.length > 1 ? 'e' : ''}: Gen {selectedGens.join(', ')}
+              </p>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
             <RetroButton
               onClick={handleGeneratePuzzles}
               isLoading={puzzleLoading}
-              disabled={puzzleLoading}
-              className="flex-1"
+              disabled={puzzleLoading || selectedGens.length === 0}
+              className="w-full"
             >
               <Zap className="w-4 h-4 mr-2" />
               Rapido
@@ -360,9 +441,9 @@ export default function Admin() {
             <RetroButton
               onClick={handleGenerateCompletePuzzles}
               isLoading={puzzleLoading}
-              disabled={puzzleLoading}
+              disabled={puzzleLoading || selectedGens.length === 0}
               variant="outline"
-              className="flex-1 border-blue-300 text-blue-600"
+              className="w-full border-blue-300 text-blue-600"
             >
               <Zap className="w-4 h-4 mr-2" />
               Completo
