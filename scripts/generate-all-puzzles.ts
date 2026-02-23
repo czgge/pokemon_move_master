@@ -1,15 +1,18 @@
 import { db } from "../server/db";
 import { pokemon, moves, pokemonMoves, versions } from "../shared/schema";
-import { lte, and, inArray, eq } from "drizzle-orm";
+import { lte, and, inArray, eq, isNotNull } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
 // Get valid version IDs for a generation
 async function getValidVersionIds(maxGen: number): Promise<number[]> {
-  const versionsList = await db.select({ versionGroupId: versions.versionGroupId })
+  const versionsList = await db.select({ id: versions.id })
     .from(versions)
-    .where(lte(versions.generationId, maxGen));
-  return [...new Set(versionsList.map(v => v.versionGroupId))];
+    .where(and(
+      lte(versions.generationId, maxGen),
+      isNotNull(versions.generationId)
+    ));
+  return versionsList.map(v => v.id);
 }
 
 // Get Pokemon with their pre-evolutions
