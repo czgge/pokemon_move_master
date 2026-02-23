@@ -20,7 +20,12 @@ async function getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]>
   // Use evolution_trees if available, otherwise fallback to evolutions table
   try {
     const { evolutionTrees } = await import("../shared/schema");
-    const trees = await db.select()
+    const trees = await db.select({
+      stage1Id: evolutionTrees.stage1Id,
+      stage2Id: evolutionTrees.stage2Id,
+      stage3Id: evolutionTrees.stage3Id,
+      stage: evolutionTrees.stage
+    })
       .from(evolutionTrees)
       .where(lte(evolutionTrees.stage, 3));
     

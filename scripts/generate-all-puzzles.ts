@@ -1,69 +1,75 @@
-// Generate ALL possible unique puzzle combinations
-// This script generates every possible 4-move combination that is unique
-// WARNING: This can take several hours and generate large files
-
 import { db } from "../server/db";
-import { pokemon, moves, pokemonMoves, evolutions } from "../shared/schema";
-import { eq, lte, sql, and, inArray } from "drizzle-orm";
+import { pokemon, moves, pokemonMoves, versions } from "../shared/schema";
+import { lte, and, inArray } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
 // Get valid version IDs for a generation
 async function getValidVersionIds(maxGen: number): Promise<number[]> {
-  const versions = await db.query.versions.findMany({
-    where: (versions, { lte }) => lte(versions.generationId, maxGen),
-    columns: { versionGroupId: true }
-  });
-  return [...new Set(versions.map(v => v.versionGroupId))];
+  const versionsList = await db.select({ versionGroupId: versions.versionGroupId })
+    .from(versions)
+    .where(lte(versions.generationId, maxGen));
+  return [...new Set(versionsList.map(v => v.versionGroupId))];
 }
 
-// Get Pokemon with their pre-evolutions (filtering cosmetic forms)
+// Get Pokemon with their pre-evolutions
 async function getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]> {
   const result = [pokemonId];
   const visited = new Set<number>([pokemonId]);
-  const queue = [pokemonId];
   
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    
-    const preEvos = await db.select({
-      preEvolutionId: evolutions.evolvedSpeciesId,
-      speciesName: pokemon.speciesName
+  // Use evolution_trees if available
+  try {
+    const { evolutionTrees } = await import("../shared/schema");
+    const trees = await db.select({
+      stage1Id: evolutionTrees.stage1Id,
+      stage2Id: evolutionTrees.stage2Id,
+      stage3Id: evolutionTrees.stage3Id,
+      stage: evolutionTrees.stage
     })
-    .from(evolutions)
-    .innerJoin(pokemon, eq(evolutions.evolvedSpeciesId, pokemon.id))
-    .where(eq(evolutions.evolvesIntoSpeciesId, currentId));
+      .from(evolutionTrees)
+      .where(lte(evolutionTrees.stage, 3));
     
-    for (const preEvo of preEvos) {
-      const speciesName = preEvo.speciesName;
-      const isCosmeticForm = 
-        speciesName.includes('-cap') ||
-        speciesName.includes('-original') ||
-        speciesName.includes('-hoenn') ||
-        speciesName.includes('-sinnoh') ||
-        speciesName.includes('-unova') ||
-        speciesName.includes('-kalos') ||
-        speciesName.includes('-alola') ||
-        speciesName.includes('-partner') ||
-        speciesName.includes('-world');
-      
-      if (!isCosmeticForm && !visited.has(preEvo.preEvolutionId)) {
-        visited.add(preEvo.preEvolutionId);
-        result.push(preEvo.preEvolutionId);
-        queue.push(preEvo.preEvolutionId);
+    for (const tree of trees) {
+      const stages = [tree.stage1Id, tree.stage2Id, tree.stage3Id].filter(id => id !== null);
+      if (stages.includes(pokemonId)) {
+        const pokemonIndex = stages.indexOf(pokemonId);
+        for (let i = 0; i < pokemonIndex; i++) {
+          if (stages[i] && !visited.has(stages[i])) {
+            result.push(stages[i]);
+            visited.add(stages[i]);
+          }
+        }
+        break;
       }
     }
+  } catch (e) {
+    console.log("Using evolutions table as fallback");
   }
   
   return result;
 }
 
-// Calculate move frequency across all Pokemon
+// Get all moves a Pokemon can learn
+async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<number[]> {
+  const validVersionIds = await getValidVersionIds(maxGen);
+  const pokemonWithPreEvos = await getPokemonWithPreEvolutions(pokemonId);
+  
+  const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+    .from(pokemonMoves)
+    .where(and(
+      inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
+      inArray(pokemonMoves.versionGroupId, validVersionIds)
+    ));
+  
+  return pokemonMovesList.map(m => m.moveId);
+}
+
+// Calculate move frequencies
 function calculateMoveFrequencies(allPokemonMoves: Map<number, Set<number>>): Map<number, number> {
   const frequencies = new Map<number, number>();
   
-  for (const moves of allPokemonMoves.values()) {
-    for (const moveId of moves) {
+  for (const moveset of allPokemonMoves.values()) {
+    for (const moveId of moveset) {
       frequencies.set(moveId, (frequencies.get(moveId) || 0) + 1);
     }
   }
@@ -71,75 +77,47 @@ function calculateMoveFrequencies(allPokemonMoves: Map<number, Set<number>>): Ma
   return frequencies;
 }
 
-// Calculate score for a moveset (lower score = more common moves = less desirable)
-function calculateMovesetScore(moveIds: number[], moveFrequencies: Map<number, number>, totalPokemon: number): number {
+// Calculate rarity score (higher = rarer = better)
+function calculateRarityScore(moveIds: number[], moveFrequencies: Map<number, number>, totalPokemon: number): number {
   let score = 0;
   
   for (const moveId of moveIds) {
     const frequency = moveFrequencies.get(moveId) || 0;
-    const rarity = totalPokemon - frequency; // Higher rarity = less common
-    score += rarity;
+    const rarity = totalPokemon - frequency;
+    score += rarity * rarity; // Quadratic to heavily favor rare moves
   }
   
   return score;
 }
 
-// Generate all combinations of 4 moves from a list
-function* generateCombinations(moves: number[], size: number): Generator<number[]> {
-  if (size === 0) {
-    yield [];
-    return;
-  }
+// Generate all 4-move combinations
+function* generateCombinations(moves: number[]): Generator<number[]> {
+  const n = moves.length;
+  if (n < 4) return;
   
-  for (let i = 0; i <= moves.length - size; i++) {
-    const move = moves[i];
-    const remaining = moves.slice(i + 1);
-    
-    for (const combo of generateCombinations(remaining, size - 1)) {
-      yield [move, ...combo];
+  for (let i = 0; i < n - 3; i++) {
+    for (let j = i + 1; j < n - 2; j++) {
+      for (let k = j + 1; k < n - 1; k++) {
+        for (let l = k + 1; l < n; l++) {
+          yield [moves[i], moves[j], moves[k], moves[l]];
+        }
+      }
     }
   }
 }
 
-// Generate all combinations sorted by rarity score
-function* generateWeightedCombinations(
-  moves: number[], 
-  size: number,
-  moveFrequencies: Map<number, number>,
-  totalPokemon: number
-): Generator<{ combo: number[], score: number }> {
-  // Generate all combinations
-  const allCombos: Array<{ combo: number[], score: number }> = [];
-  
-  for (const combo of generateCombinations(moves, size)) {
-    const score = calculateMovesetScore(combo, moveFrequencies, totalPokemon);
-    allCombos.push({ combo, score });
-  }
-  
-  // Sort by score (descending - higher score = rarer moves = better)
-  allCombos.sort((a, b) => b.score - a.score);
-  
-  // Yield in order of rarity
-  for (const item of allCombos) {
-    yield item;
-  }
-}
-
-// Check if a moveset is unique (no other Pokemon can learn all 4 moves)
-async function isUniqueMoveset(
+// Check if moveset is unique
+function isUniqueMoveset(
   moveIds: number[],
   pokemonId: number,
-  maxGen: number,
   allPokemonMoves: Map<number, Set<number>>
-): Promise<boolean> {
-  // Check all other Pokemon
+): boolean {
   for (const [otherPokemonId, otherMoves] of allPokemonMoves.entries()) {
     if (otherPokemonId === pokemonId) continue;
     
-    // Check if this Pokemon can learn all the moves
     const canLearnAll = moveIds.every(moveId => otherMoves.has(moveId));
     if (canLearnAll) {
-      return false; // Not unique
+      return false;
     }
   }
   
@@ -154,13 +132,12 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
     const prevMoves = prevCombo.split(',').map(Number);
     const prevSet = new Set(prevMoves);
     
-    // Count how many moves are the same
     let sameCount = 0;
     for (const move of currentSet) {
       if (prevSet.has(move)) sameCount++;
     }
     
-    // If 3 or 4 moves are the same, reject (need at least 2 different)
+    // If 3 or 4 moves are the same, reject
     if (sameCount >= 3) {
       return false;
     }
@@ -170,13 +147,18 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
 }
 
 async function generateAllPuzzles(gen: number) {
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`GENERATING ALL UNIQUE PUZZLES FOR GEN ${gen}`);
-  console.log(`${'='.repeat(60)}\n`);
+  const MAX_PUZZLES_PER_POKEMON = 5; // Limit for complete version
+  
+  console.log(`\n${'='.repeat(70)}`);
+  console.log(`🚀 COMPLETE PUZZLE GENERATION - Generation ${gen}`);
+  console.log(`   Target: ALL unique puzzles (with variation)`);
+  console.log(`   Strategy: Rare moves + Pokemon distribution + variation`);
+  console.log(`${'='.repeat(70)}\n`);
   
   const startTime = Date.now();
   
-  // Get all Pokemon up to this generation
+  // STEP 1: Load Pokemon
+  console.log("📦 STEP 1: Loading Pokemon...");
   const allPokemon = await db.select({
     id: pokemon.id,
     name: pokemon.name,
@@ -186,7 +168,6 @@ async function generateAllPuzzles(gen: number) {
   .from(pokemon)
   .where(lte(pokemon.generationId, gen));
   
-  // Filter out cosmetic forms
   const filteredPokemon = allPokemon.filter(p => {
     const name = p.speciesName;
     return !name.includes('-cap') &&
@@ -202,57 +183,107 @@ async function generateAllPuzzles(gen: number) {
            !name.includes('-totem');
   });
   
-  console.log(`Found ${filteredPokemon.length} Pokemon for Gen ${gen}`);
+  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon\n`);
   
-  // Pre-load all moves for all Pokemon (including pre-evolutions)
-  console.log("Pre-loading moves for all Pokemon (including pre-evolutions)...");
+  // STEP 2: Load moves
+  console.log("📦 STEP 2: Loading moves for all Pokemon...");
   const allPokemonMoves = new Map<number, Set<number>>();
-  const validVersionIds = await getValidVersionIds(gen);
   
   for (let i = 0; i < filteredPokemon.length; i++) {
     const pkmn = filteredPokemon[i];
-    
-    // Get Pokemon + pre-evolutions
-    const pokemonWithPreEvos = await getPokemonWithPreEvolutions(pkmn.id);
-    
-    // Get all moves
-    const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
-      .from(pokemonMoves)
-      .where(and(
-        inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
-        inArray(pokemonMoves.versionGroupId, validVersionIds)
-      ));
-    
-    allPokemonMoves.set(pkmn.id, new Set(pokemonMovesList.map(m => m.moveId)));
+    const moveIds = await getMovesForPokemon(pkmn.id, gen);
+    allPokemonMoves.set(pkmn.id, new Set(moveIds));
     
     if ((i + 1) % 50 === 0) {
-      console.log(`  Loaded moves for ${i + 1}/${filteredPokemon.length} Pokemon`);
+      console.log(`   Progress: ${i + 1}/${filteredPokemon.length}`);
     }
   }
   
-  console.log(`✓ Loaded moves for all ${filteredPokemon.length} Pokemon\n`);
+  console.log(`   ✓ Loaded moves for all Pokemon\n`);
   
-  // Calculate move frequencies
-  console.log("Calculating move frequencies for rarity weighting...");
+  // STEP 3: Calculate frequencies
+  console.log("📊 STEP 3: Calculating move frequencies...");
   const moveFrequencies = calculateMoveFrequencies(allPokemonMoves);
   
-  // Log most common moves
-  const sortedMoves = Array.from(moveFrequencies.entries())
+  const sortedByFrequency = Array.from(moveFrequencies.entries())
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 20);
+    .slice(0, 15);
   
-  console.log("\nTop 20 most common moves (will be deprioritized):");
-  for (const [moveId, count] of sortedMoves) {
+  console.log("   Top 15 most common moves (will be deprioritized):");
+  for (const [moveId, count] of sortedByFrequency) {
     const moveInfo = await db.select({ name: moves.name })
       .from(moves)
-      .where(eq(moves.id, moveId))
+      .where(lte(moves.id, moveId))
       .limit(1);
-    console.log(`  ${moveInfo[0]?.name || moveId}: ${count} Pokemon (${((count / filteredPokemon.length) * 100).toFixed(1)}%)`);
+    const percentage = ((count / filteredPokemon.length) * 100).toFixed(1);
+    console.log(`     • ${moveInfo[0]?.name || `Move ${moveId}`}: ${count} Pokemon (${percentage}%)`);
+  }
+  console.log();
+  
+  // STEP 4: Generate all unique puzzles
+  console.log("🎯 STEP 4: Generating all unique puzzle candidates...");
+  
+  interface PuzzleCandidate {
+    pokemonId: number;
+    pokemonName: string;
+    ndexId: number;
+    moveIds: number[];
+    rarityScore: number;
   }
   
-  // Generate all unique puzzles
-  console.log("\nGenerating all unique 4-move combinations (sorted by rarity)...");
-  const puzzles: Array<{
+  const allCandidates: PuzzleCandidate[] = [];
+  let totalCombinationsChecked = 0;
+  
+  for (let i = 0; i < filteredPokemon.length; i++) {
+    const pkmn = filteredPokemon[i];
+    const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+    
+    if (moveIds.length < 4) {
+      console.log(`   ⚠ ${pkmn.name} has only ${moveIds.length} moves, skipping`);
+      continue;
+    }
+    
+    let pokemonUnique = 0;
+    const pokemonStartTime = Date.now();
+    
+    for (const combo of generateCombinations(moveIds)) {
+      totalCombinationsChecked++;
+      
+      if (isUniqueMoveset(combo, pkmn.id, allPokemonMoves)) {
+        const rarityScore = calculateRarityScore(combo, moveFrequencies, filteredPokemon.length);
+        
+        allCandidates.push({
+          pokemonId: pkmn.id,
+          pokemonName: pkmn.name,
+          ndexId: pkmn.ndexId,
+          moveIds: combo,
+          rarityScore
+        });
+        
+        pokemonUnique++;
+      }
+      
+      if (totalCombinationsChecked % 10000 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+        console.log(`   [${elapsed}m] Checked ${totalCombinationsChecked.toLocaleString()} combos, found ${allCandidates.length.toLocaleString()} unique`);
+      }
+    }
+    
+    const pokemonTime = ((Date.now() - pokemonStartTime) / 1000).toFixed(1);
+    console.log(`   ✓ ${pkmn.name}: ${pokemonUnique} unique puzzles (${pokemonTime}s)`);
+  }
+  
+  console.log(`   ✓ Found ${allCandidates.length.toLocaleString()} unique puzzle candidates\n`);
+  
+  // STEP 5: Sort by rarity
+  console.log("🔄 STEP 5: Sorting by rarity score...");
+  allCandidates.sort((a, b) => b.rarityScore - a.rarityScore);
+  console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
+  
+  // STEP 6: Select with variation and distribution
+  console.log("✨ STEP 6: Selecting puzzles (with variation + Pokemon diversity)...");
+  
+  const selectedPuzzles: Array<{
     pokemonId: number;
     pokemonName: string;
     ndexId: number;
@@ -260,72 +291,95 @@ async function generateAllPuzzles(gen: number) {
     generation: number;
   }> = [];
   
-  let totalCombinations = 0;
-  let uniqueCombinations = 0;
+  const pokemonPuzzleCount = new Map<number, number>();
+  const pokemonPreviousCombos = new Map<number, Set<string>>();
+  const usedCombinations = new Set<string>();
   
-  for (let i = 0; i < filteredPokemon.length; i++) {
-    const pkmn = filteredPokemon[i];
-    const moveIds = Array.from(allPokemonMoves.get(pkmn.id) || []);
+  for (const candidate of allCandidates) {
+    const currentCount = pokemonPuzzleCount.get(candidate.pokemonId) || 0;
+    const comboKey = candidate.moveIds.join(',');
     
-    if (moveIds.length < 4) {
-      console.log(`  ⚠ ${pkmn.name} has only ${moveIds.length} moves, skipping`);
+    // Skip if already used
+    if (usedCombinations.has(comboKey)) continue;
+    
+    // Check variation
+    if (!pokemonPreviousCombos.has(candidate.pokemonId)) {
+      pokemonPreviousCombos.set(candidate.pokemonId, new Set());
+    }
+    
+    const previousCombos = pokemonPreviousCombos.get(candidate.pokemonId)!;
+    
+    if (!hasMinimumVariation(candidate.moveIds, previousCombos)) {
       continue;
     }
     
-    const pokemonStartTime = Date.now();
-    let pokemonCombos = 0;
-    let pokemonUnique = 0;
-    const pokemonPreviousCombos = new Set<string>();
-    
-    // Generate all 4-move combinations (sorted by rarity)
-    for (const { combo, score } of generateWeightedCombinations(moveIds, 4, moveFrequencies, filteredPokemon.length)) {
-      totalCombinations++;
-      pokemonCombos++;
+    // Check Pokemon distribution
+    if (currentCount >= MAX_PUZZLES_PER_POKEMON) {
+      const pokemonWithZeroPuzzles = allCandidates.filter(c => 
+        (pokemonPuzzleCount.get(c.pokemonId) || 0) === 0 &&
+        !usedCombinations.has(c.moveIds.join(','))
+      ).length;
       
-      // Check if unique
-      const isUnique = await isUniqueMoveset(combo, pkmn.id, gen, allPokemonMoves);
-      
-      if (isUnique) {
-        // Check if at least 2 moves are different from previous combos for this Pokemon
-        if (hasMinimumVariation(combo, pokemonPreviousCombos)) {
-          uniqueCombinations++;
-          pokemonUnique++;
-          
-          puzzles.push({
-            pokemonId: pkmn.id,
-            pokemonName: pkmn.name,
-            ndexId: pkmn.ndexId,
-            moveIds: combo.join(','),
-            generation: gen
-          });
-          
-          pokemonPreviousCombos.add(combo.join(','));
-        }
-      }
-      
-      // Progress update every 1000 combinations
-      if (totalCombinations % 1000 === 0) {
-        const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-        console.log(`  [${elapsed}m] Checked ${totalCombinations} combos, found ${uniqueCombinations} unique`);
+      if (pokemonWithZeroPuzzles > 0) {
+        continue;
       }
     }
     
-    const pokemonTime = ((Date.now() - pokemonStartTime) / 1000).toFixed(1);
-    console.log(`  ✓ ${pkmn.name}: ${pokemonUnique}/${pokemonCombos} unique (${pokemonTime}s)`);
+    // Add puzzle
+    selectedPuzzles.push({
+      pokemonId: candidate.pokemonId,
+      pokemonName: candidate.pokemonName,
+      ndexId: candidate.ndexId,
+      moveIds: comboKey,
+      generation: gen
+    });
+    
+    usedCombinations.add(comboKey);
+    previousCombos.add(comboKey);
+    pokemonPuzzleCount.set(candidate.pokemonId, currentCount + 1);
+    
+    if (selectedPuzzles.length % 1000 === 0) {
+      const uniquePokemon = pokemonPuzzleCount.size;
+      console.log(`   Progress: ${selectedPuzzles.length.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
+    }
   }
   
-  const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`GENERATION COMPLETE!`);
-  console.log(`  Total combinations checked: ${totalCombinations.toLocaleString()}`);
-  console.log(`  Unique puzzles found: ${uniqueCombinations.toLocaleString()}`);
-  console.log(`  Time elapsed: ${totalTime} minutes`);
-  console.log(`${'='.repeat(60)}\n`);
+  console.log(`   ✓ Selected ${selectedPuzzles.length.toLocaleString()} puzzles\n`);
   
-  // Write to CSV
+  // STEP 7: Statistics
+  console.log("📈 STEP 7: Statistics");
+  
+  const distribution = new Map<number, number>();
+  for (const puzzle of selectedPuzzles) {
+    const count = distribution.get(puzzle.pokemonId) || 0;
+    distribution.set(puzzle.pokemonId, count + 1);
+  }
+  
+  const pokemonWithPuzzles = distribution.size;
+  const avgPuzzlesPerPokemon = (selectedPuzzles.length / pokemonWithPuzzles).toFixed(1);
+  const maxPuzzles = Math.max(...Array.from(distribution.values()));
+  const minPuzzles = Math.min(...Array.from(distribution.values()));
+  
+  const countDistribution = new Map<number, number>();
+  for (const count of distribution.values()) {
+    countDistribution.set(count, (countDistribution.get(count) || 0) + 1);
+  }
+  
+  console.log(`   Total puzzles: ${selectedPuzzles.length.toLocaleString()}`);
+  console.log(`   Pokemon with puzzles: ${pokemonWithPuzzles}/${filteredPokemon.length}`);
+  console.log(`   Average per Pokemon: ${avgPuzzlesPerPokemon}`);
+  console.log(`   Min/Max per Pokemon: ${minPuzzles}/${maxPuzzles}`);
+  console.log(`   Distribution:`);
+  for (const [count, numPokemon] of Array.from(countDistribution.entries()).sort((a, b) => a[0] - b[0])) {
+    console.log(`     • ${numPokemon} Pokemon with ${count} puzzle${count > 1 ? 's' : ''}`);
+  }
+  console.log();
+  
+  // STEP 8: Write to CSV
+  console.log("💾 STEP 8: Writing to CSV...");
   const csvPath = path.join(process.cwd(), 'data', `puzzles-gen${gen}-complete.csv`);
   const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-  const csvRows = puzzles.map(p => 
+  const csvRows = selectedPuzzles.map(p => 
     `${p.pokemonId},${p.pokemonName},${p.ndexId},"${p.moveIds}",${p.generation}`
   ).join('\n');
   
@@ -333,9 +387,18 @@ async function generateAllPuzzles(gen: number) {
   fs.writeFileSync(csvPath, csvHeader + csvRows);
   
   const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
-  console.log(`✓ Saved to ${csvPath} (${fileSize} MB)`);
+  console.log(`   ✓ Saved to ${csvPath} (${fileSize} MB)\n`);
   
-  return puzzles.length;
+  const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+  console.log(`${'='.repeat(70)}`);
+  console.log(`✅ GENERATION COMPLETE!`);
+  console.log(`   Time: ${totalTime} minutes`);
+  console.log(`   Combinations checked: ${totalCombinationsChecked.toLocaleString()}`);
+  console.log(`   Unique candidates: ${allCandidates.length.toLocaleString()}`);
+  console.log(`   Final puzzles: ${selectedPuzzles.length.toLocaleString()}`);
+  console.log(`${'='.repeat(70)}\n`);
+  
+  return selectedPuzzles.length;
 }
 
 async function main() {
@@ -343,17 +406,14 @@ async function main() {
   const targetGen = args[0] ? parseInt(args[0]) : null;
   
   if (targetGen) {
-    // Generate for specific generation
     if (targetGen < 1 || targetGen > 9) {
-      console.error("Invalid generation. Use 1-9.");
+      console.error("❌ Invalid generation. Use 1-9.");
       process.exit(1);
     }
     
     await generateAllPuzzles(targetGen);
   } else {
-    // Generate for all generations
-    console.log("Generating ALL puzzles for ALL generations (1-9)");
-    console.log("This will take several hours. Press Ctrl+C to cancel.\n");
+    console.log("🚀 Generating COMPLETE puzzles for ALL generations (1-9)\n");
     
     for (let gen = 1; gen <= 9; gen++) {
       await generateAllPuzzles(gen);
@@ -366,6 +426,6 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error("Fatal error:", error);
+  console.error("\n❌ FATAL ERROR:", error);
   process.exit(1);
 });
