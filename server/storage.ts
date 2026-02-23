@@ -8,6 +8,7 @@ import {
   generations,
   versions,
   evolutions,
+  evolutionTrees,
   type HighScore,
   type InsertHighScore,
   type Pokemon,
@@ -496,49 +497,67 @@ class DatabaseStorage implements IStorage {
 
   async getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]> {
     // Get only this Pokemon and its direct pre-evolutions (NOT sibling evolutions)
-    // Example: Flareon should get Eevee, but NOT Vaporeon/Jolteon/etc.
+    // Uses evolution_trees table to find all Pokemon in the same family
     
-    const result = [pokemonId];
-    const visited = new Set<number>([pokemonId]);
-    const queue = [pokemonId];
-    
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
+    try {
+      // Get the Pokemon's ndexId
+      const [targetPokemon] = await db.select({ ndexId: pokemon.ndexId })
+        .from(pokemon)
+        .where(eq(pokemon.id, pokemonId));
       
-      // Find what this Pokemon evolved FROM (pre-evolution)
-      // We look for rows where evolvesIntoSpeciesId = currentId (this Pokemon is the result)
-      // This gives us the evolvedSpeciesId (the pre-evolution)
-      const preEvos = await db.select({
-        preEvolutionId: evolutions.evolvedSpeciesId,
-        speciesName: pokemon.speciesName
-      })
-      .from(evolutions)
-      .innerJoin(pokemon, eq(evolutions.evolvedSpeciesId, pokemon.id))
-      .where(eq(evolutions.evolvesIntoSpeciesId, currentId));
-      
-      for (const preEvo of preEvos) {
-        // Filter out cosmetic forms
-        const speciesName = preEvo.speciesName;
-        const isCosmeticForm = 
-          speciesName.includes('-cap') ||
-          speciesName.includes('-original') ||
-          speciesName.includes('-hoenn') ||
-          speciesName.includes('-sinnoh') ||
-          speciesName.includes('-unova') ||
-          speciesName.includes('-kalos') ||
-          speciesName.includes('-alola') ||
-          speciesName.includes('-partner') ||
-          speciesName.includes('-world');
-        
-        if (!isCosmeticForm && !visited.has(preEvo.preEvolutionId)) {
-          visited.add(preEvo.preEvolutionId);
-          result.push(preEvo.preEvolutionId);
-          queue.push(preEvo.preEvolutionId);
-        }
+      if (!targetPokemon || !targetPokemon.ndexId) {
+        console.log(`[getPokemonWithPreEvolutions] Pokemon ${pokemonId} not found or has no ndexId`);
+        return [pokemonId];
       }
+      
+      // Get the evolution tree ID for this Pokemon
+      const [treeInfo] = await db.select({ evolutionTreeId: evolutionTrees.evolutionTreeId })
+        .from(evolutionTrees)
+        .where(eq(evolutionTrees.ndexId, targetPokemon.ndexId));
+      
+      if (!treeInfo) {
+        console.log(`[getPokemonWithPreEvolutions] No evolution tree found for ndexId ${targetPokemon.ndexId}`);
+        return [pokemonId];
+      }
+      
+      // Get all ndexIds in the same evolution family
+      const familyNdexIds = await db.select({ ndexId: evolutionTrees.ndexId })
+        .from(evolutionTrees)
+        .where(eq(evolutionTrees.evolutionTreeId, treeInfo.evolutionTreeId));
+      
+      const ndexIds = familyNdexIds.map(f => f.ndexId);
+      console.log(`[getPokemonWithPreEvolutions] Pokemon ${pokemonId} (ndex ${targetPokemon.ndexId}) family ndexIds:`, ndexIds);
+      
+      // Get all Pokemon IDs that match these ndexIds (excluding cosmetic forms)
+      const familyPokemon = await db.select({ id: pokemon.id, speciesName: pokemon.speciesName })
+        .from(pokemon)
+        .where(inArray(pokemon.ndexId, ndexIds));
+      
+      // Filter out cosmetic forms
+      const result = familyPokemon
+        .filter(p => {
+          const speciesName = p.speciesName;
+          const isCosmeticForm = 
+            speciesName.includes('-cap') ||
+            speciesName.includes('-original') ||
+            speciesName.includes('-hoenn') ||
+            speciesName.includes('-sinnoh') ||
+            speciesName.includes('-unova') ||
+            speciesName.includes('-kalos') ||
+            speciesName.includes('-alola') ||
+            speciesName.includes('-partner') ||
+            speciesName.includes('-world');
+          return !isCosmeticForm;
+        })
+        .map(p => p.id);
+      
+      console.log(`[getPokemonWithPreEvolutions] Final result for Pokemon ${pokemonId}:`, result);
+      return result;
+    } catch (error) {
+      console.error(`[getPokemonWithPreEvolutions] Error:`, error);
+      // Fallback to just the Pokemon itself
+      return [pokemonId];
     }
-    
-    return result;
   }
 
   async getFullEvolutionFamily(speciesId: number): Promise<number[]> {

@@ -8,7 +8,7 @@ import fs from "fs";
 import path from "path";
 import csv from "csv-parser";
 import { db } from "./db";
-import { pokemon, moves, pokemonMoves, versions, evolutions } from "../shared/schema";
+import { pokemon, moves, pokemonMoves, versions, evolutions, evolutionTrees } from "../shared/schema";
 import { eq, lte, sql, and, inArray } from "drizzle-orm";
 
 // Cache for pre-generated puzzles
@@ -2685,6 +2685,40 @@ async function seedDatabase(force: boolean = false) {
   } catch (error) {
     console.error("✗ Error during evolution seeding:", error);
     // Don't throw - let the rest of the app work even if evolutions fail
+  }
+  
+  // Import evolution trees (for baby Pokemon and complete evolution families)
+  try {
+    console.log("Importing evolution trees...");
+    const evolutionTreesData = await parseCsv('attached_assets/ndex_evolution_trees.csv');
+    
+    const treeRecords = evolutionTreesData
+      .map((r: any) => ({
+        ndexId: parseInt(r.ndex_id),
+        evolutionTreeId: parseInt(r.evolution_tree_id)
+      }))
+      .filter((r: any) => !isNaN(r.ndexId) && !isNaN(r.evolutionTreeId));
+    
+    console.log(`Parsed ${treeRecords.length} evolution tree records`);
+    
+    if (treeRecords.length > 0) {
+      // Clear existing data
+      await db.delete(evolutionTrees);
+      
+      // Insert in batches of 1000
+      const batchSize = 1000;
+      for (let i = 0; i < treeRecords.length; i += batchSize) {
+        const batch = treeRecords.slice(i, i + batchSize);
+        await db.insert(evolutionTrees).values(batch);
+      }
+      
+      console.log("✓ Seeded evolution trees successfully");
+    } else {
+      console.log("⚠ WARNING: No evolution trees were parsed!");
+    }
+  } catch (error) {
+    console.error("✗ Error during evolution trees seeding:", error);
+    // Don't throw - let the rest of the app work even if evolution trees fail
   }
 }
 
