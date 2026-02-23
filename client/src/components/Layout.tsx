@@ -1,8 +1,9 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Gamepad2, BookOpen, Trophy, Moon, Sun } from "lucide-react";
+import { Gamepad2, BookOpen, Trophy, Moon, Sun, Volume2, VolumeX } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useAudio } from "@/contexts/AudioContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -11,6 +12,7 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { isMuted, toggleMute } = useAudio();
 
   const navItems = [
     { href: "/", label: "Home", icon: Gamepad2 },
@@ -47,19 +49,35 @@ export function Layout({ children }: LayoutProps) {
             ))}
           </nav>
 
-          {/* Theme Toggle */}
-          <button
-            onClick={toggleTheme}
-            className="ml-auto p-2 rounded-lg border-2 border-border bg-background hover:bg-accent transition-colors"
-            aria-label="Toggle theme"
-            title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
-          >
-            {theme === "light" ? (
-              <Moon className="w-5 h-5 text-foreground" />
-            ) : (
-              <Sun className="w-5 h-5 text-foreground" />
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Audio Toggle */}
+            <button
+              onClick={toggleMute}
+              className="p-2 rounded-lg border-2 border-border bg-background hover:bg-accent transition-colors"
+              aria-label="Toggle sound"
+              title={isMuted ? "Unmute sounds" : "Mute sounds"}
+            >
+              {isMuted ? (
+                <VolumeX className="w-5 h-5 text-foreground" />
+              ) : (
+                <Volume2 className="w-5 h-5 text-foreground" />
+              )}
+            </button>
+
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg border-2 border-border bg-background hover:bg-accent transition-colors"
+              aria-label="Toggle theme"
+              title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+            >
+              {theme === "light" ? (
+                <Moon className="w-5 h-5 text-foreground" />
+              ) : (
+                <Sun className="w-5 h-5 text-foreground" />
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
