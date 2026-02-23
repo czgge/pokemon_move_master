@@ -132,7 +132,7 @@ function isUniqueMoveset(
   return true;
 }
 
-// Check if at least 2 moves are different from previous combinations
+// Check if at least 3 moves are different from previous combinations
 function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): boolean {
   const currentSet = new Set(moveIds);
   
@@ -145,8 +145,8 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
       if (prevSet.has(move)) sameCount++;
     }
     
-    // If 3 or 4 moves are the same, reject
-    if (sameCount >= 3) {
+    // If 2, 3 or 4 moves are the same, reject (only accept if max 1 move is the same)
+    if (sameCount >= 2) {
       return false;
     }
   }
@@ -308,8 +308,8 @@ async function generatePuzzles() {
   allCandidates.sort((a, b) => b.rarityScore - a.rarityScore);
   console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
   
-  // STEP 6: Select puzzles with Pokemon distribution priority AND variation
-  console.log("✨ STEP 6: Selecting puzzles (with variation + Pokemon diversity)...");
+  // STEP 6: Select top 10k puzzles with variation check (simplified for speed)
+  console.log("✨ STEP 6: Selecting top 10,000 puzzles (with strict variation check)...");
   
   const selectedPuzzles: Array<{
     pokemonId: number;
@@ -319,47 +319,25 @@ async function generatePuzzles() {
     generation: number;
   }> = [];
   
-  const pokemonPuzzleCount = new Map<number, number>();
   const pokemonPreviousCombos = new Map<number, Set<string>>();
-  const usedCombinations = new Set<string>();
   
-  // Selection algorithm: prioritize Pokemon with fewer puzzles + ensure variation
   for (const candidate of allCandidates) {
-    if (selectedPuzzles.length >= MAX_PUZZLES) break;
+    if (selectedPuzzles.length >= MAX_PUZZLES) break; // Stop at 10k
     
-    const currentCount = pokemonPuzzleCount.get(candidate.pokemonId) || 0;
-    const comboKey = candidate.moveIds.join(',');
-    
-    // Skip if already used this exact combination
-    if (usedCombinations.has(comboKey)) continue;
-    
-    // Check variation for this Pokemon
+    // Check variation
     if (!pokemonPreviousCombos.has(candidate.pokemonId)) {
       pokemonPreviousCombos.set(candidate.pokemonId, new Set());
     }
     
     const previousCombos = pokemonPreviousCombos.get(candidate.pokemonId)!;
+    const comboKey = candidate.moveIds.join(',');
     
-    // Check if at least 2 moves are different from previous combos
+    // Only skip if 2+ moves are the same (require at least 3 different moves)
     if (!hasMinimumVariation(candidate.moveIds, previousCombos)) {
       continue;
     }
     
-    // Check if we should skip this Pokemon (already has enough puzzles)
-    if (currentCount >= MAX_PUZZLES_PER_POKEMON) {
-      // Count how many Pokemon still have 0 puzzles
-      const pokemonWithZeroPuzzles = allCandidates.filter(c => 
-        (pokemonPuzzleCount.get(c.pokemonId) || 0) === 0 &&
-        !usedCombinations.has(c.moveIds.join(','))
-      ).length;
-      
-      // If there are Pokemon with 0 puzzles, skip this one
-      if (pokemonWithZeroPuzzles > 0) {
-        continue;
-      }
-    }
-    
-    // Add this puzzle
+    // Add puzzle
     selectedPuzzles.push({
       pokemonId: candidate.pokemonId,
       pokemonName: candidate.pokemonName,
@@ -368,12 +346,10 @@ async function generatePuzzles() {
       generation: gen
     });
     
-    usedCombinations.add(comboKey);
     previousCombos.add(comboKey);
-    pokemonPuzzleCount.set(candidate.pokemonId, currentCount + 1);
     
     if (selectedPuzzles.length % 1000 === 0) {
-      const uniquePokemon = pokemonPuzzleCount.size;
+      const uniquePokemon = pokemonPreviousCombos.size;
       console.log(`   Progress: ${selectedPuzzles.length.toLocaleString()}/${MAX_PUZZLES.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
     }
   }

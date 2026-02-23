@@ -127,7 +127,7 @@ function isUniqueMoveset(
   return true;
 }
 
-// Check if at least 2 moves are different from previous combinations
+// Check if at least 3 moves are different from previous combinations
 function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): boolean {
   const currentSet = new Set(moveIds);
   
@@ -140,8 +140,8 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
       if (prevSet.has(move)) sameCount++;
     }
     
-    // If 3 or 4 moves are the same, reject
-    if (sameCount >= 3) {
+    // If 2, 3 or 4 moves are the same, reject (only accept if max 1 move is the same)
+    if (sameCount >= 2) {
       return false;
     }
   }
@@ -282,7 +282,7 @@ async function generateAllPuzzles(gen: number) {
   console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
   
   // STEP 6: Apply variation check only (NO cap per Pokemon for complete version)
-  console.log("✨ STEP 6: Applying variation check (keeping all unique puzzles)...");
+  console.log("✨ STEP 6: Applying strict variation check (keeping all unique puzzles)...");
   
   const selectedPuzzles: Array<{
     pokemonId: number;
@@ -303,7 +303,7 @@ async function generateAllPuzzles(gen: number) {
     const previousCombos = pokemonPreviousCombos.get(candidate.pokemonId)!;
     const comboKey = candidate.moveIds.join(',');
     
-    // Only skip if variation is too similar (3+ same moves)
+    // Only skip if 2+ moves are the same (require at least 3 different moves)
     if (!hasMinimumVariation(candidate.moveIds, previousCombos)) {
       continue;
     }
