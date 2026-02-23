@@ -283,8 +283,8 @@ async function generateAllPuzzles(gen: number) {
   allCandidates.sort((a, b) => b.rarityScore - a.rarityScore);
   console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
   
-  // STEP 6: Select with variation and distribution
-  console.log("✨ STEP 6: Selecting puzzles (with variation + Pokemon diversity)...");
+  // STEP 6: Apply max 5 per Pokemon + variation check (NO 10k cap for complete version)
+  console.log("✨ STEP 6: Applying max 5 per Pokemon + variation check...");
   
   const selectedPuzzles: Array<{
     pokemonId: number;
@@ -296,14 +296,14 @@ async function generateAllPuzzles(gen: number) {
   
   const pokemonPuzzleCount = new Map<number, number>();
   const pokemonPreviousCombos = new Map<number, Set<string>>();
-  const usedCombinations = new Set<string>();
   
   for (const candidate of allCandidates) {
     const currentCount = pokemonPuzzleCount.get(candidate.pokemonId) || 0;
-    const comboKey = candidate.moveIds.join(',');
     
-    // Skip if already used
-    if (usedCombinations.has(comboKey)) continue;
+    // Skip if Pokemon already has max puzzles
+    if (currentCount >= MAX_PUZZLES_PER_POKEMON) {
+      continue;
+    }
     
     // Check variation
     if (!pokemonPreviousCombos.has(candidate.pokemonId)) {
@@ -311,21 +311,10 @@ async function generateAllPuzzles(gen: number) {
     }
     
     const previousCombos = pokemonPreviousCombos.get(candidate.pokemonId)!;
+    const comboKey = candidate.moveIds.join(',');
     
     if (!hasMinimumVariation(candidate.moveIds, previousCombos)) {
       continue;
-    }
-    
-    // Check Pokemon distribution
-    if (currentCount >= MAX_PUZZLES_PER_POKEMON) {
-      const pokemonWithZeroPuzzles = allCandidates.filter(c => 
-        (pokemonPuzzleCount.get(c.pokemonId) || 0) === 0 &&
-        !usedCombinations.has(c.moveIds.join(','))
-      ).length;
-      
-      if (pokemonWithZeroPuzzles > 0) {
-        continue;
-      }
     }
     
     // Add puzzle
@@ -337,11 +326,10 @@ async function generateAllPuzzles(gen: number) {
       generation: gen
     });
     
-    usedCombinations.add(comboKey);
     previousCombos.add(comboKey);
     pokemonPuzzleCount.set(candidate.pokemonId, currentCount + 1);
     
-    if (selectedPuzzles.length % 1000 === 0) {
+    if (selectedPuzzles.length % 5000 === 0) {
       const uniquePokemon = pokemonPuzzleCount.size;
       console.log(`   Progress: ${selectedPuzzles.length.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
     }
