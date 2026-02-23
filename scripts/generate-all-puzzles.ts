@@ -150,12 +150,10 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
 }
 
 async function generateAllPuzzles(gen: number) {
-  const MAX_PUZZLES_PER_POKEMON = 5; // Limit for complete version
-  
   console.log(`\n${'='.repeat(70)}`);
   console.log(`🚀 COMPLETE PUZZLE GENERATION - Generation ${gen}`);
-  console.log(`   Target: ALL unique puzzles (with variation)`);
-  console.log(`   Strategy: Rare moves + Pokemon distribution + variation`);
+  console.log(`   Target: ALL unique puzzles (NO cap, with variation)`);
+  console.log(`   Strategy: All rare unique movesets with variation check`);
   console.log(`${'='.repeat(70)}\n`);
   
   const startTime = Date.now();
@@ -283,8 +281,8 @@ async function generateAllPuzzles(gen: number) {
   allCandidates.sort((a, b) => b.rarityScore - a.rarityScore);
   console.log(`   ✓ Sorted ${allCandidates.length.toLocaleString()} candidates\n`);
   
-  // STEP 6: Apply max 5 per Pokemon + variation check (NO 10k cap for complete version)
-  console.log("✨ STEP 6: Applying max 5 per Pokemon + variation check...");
+  // STEP 6: Apply variation check only (NO cap per Pokemon for complete version)
+  console.log("✨ STEP 6: Applying variation check (keeping all unique puzzles)...");
   
   const selectedPuzzles: Array<{
     pokemonId: number;
@@ -294,17 +292,9 @@ async function generateAllPuzzles(gen: number) {
     generation: number;
   }> = [];
   
-  const pokemonPuzzleCount = new Map<number, number>();
   const pokemonPreviousCombos = new Map<number, Set<string>>();
   
   for (const candidate of allCandidates) {
-    const currentCount = pokemonPuzzleCount.get(candidate.pokemonId) || 0;
-    
-    // Skip if Pokemon already has max puzzles
-    if (currentCount >= MAX_PUZZLES_PER_POKEMON) {
-      continue;
-    }
-    
     // Check variation
     if (!pokemonPreviousCombos.has(candidate.pokemonId)) {
       pokemonPreviousCombos.set(candidate.pokemonId, new Set());
@@ -313,6 +303,7 @@ async function generateAllPuzzles(gen: number) {
     const previousCombos = pokemonPreviousCombos.get(candidate.pokemonId)!;
     const comboKey = candidate.moveIds.join(',');
     
+    // Only skip if variation is too similar (3+ same moves)
     if (!hasMinimumVariation(candidate.moveIds, previousCombos)) {
       continue;
     }
@@ -327,10 +318,9 @@ async function generateAllPuzzles(gen: number) {
     });
     
     previousCombos.add(comboKey);
-    pokemonPuzzleCount.set(candidate.pokemonId, currentCount + 1);
     
-    if (selectedPuzzles.length % 5000 === 0) {
-      const uniquePokemon = pokemonPuzzleCount.size;
+    if (selectedPuzzles.length % 10000 === 0) {
+      const uniquePokemon = pokemonPreviousCombos.size;
       console.log(`   Progress: ${selectedPuzzles.length.toLocaleString()} puzzles (${uniquePokemon} unique Pokemon)`);
     }
   }
