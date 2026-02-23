@@ -125,6 +125,7 @@ class DatabaseStorage implements IStorage {
 
   async searchPokemonForGame(query: string, maxGen: number): Promise<Pokemon[]> {
     // Search and deduplicate by ndexId (keep only one form per Pokemon)
+    // EXCEPT for Pokemon with different movesets per form
     try {
       console.log(`[searchPokemonForGame] query="${query}", maxGen=${maxGen}`);
       
@@ -144,6 +145,43 @@ class DatabaseStorage implements IStorage {
         console.log(`[searchPokemonForGame] First result: ${results[0].name}, speciesName: ${results[0].speciesName}`);
       }
       
+      // Pokemon with forms that have DIFFERENT movesets (should NOT be deduplicated)
+      const formsWithDifferentMovesets = [
+        'deoxys',      // Normal, Attack, Defense, Speed forms have different moves
+        'wormadam',    // Plant, Sandy, Trash cloaks have different moves
+        'rotom',       // Heat, Wash, Frost, Fan, Mow forms have different moves
+        'giratina',    // Altered, Origin forms have different moves
+        'shaymin',     // Land, Sky forms have different moves
+        'darmanitan',  // Standard, Zen forms have different moves
+        'tornadus',    // Incarnate, Therian forms have different moves
+        'thundurus',   // Incarnate, Therian forms have different moves
+        'landorus',    // Incarnate, Therian forms have different moves
+        'kyurem',      // Normal, Black, White forms have different moves
+        'keldeo',      // Ordinary, Resolute forms have different moves (Secret Sword)
+        'meloetta',    // Aria, Pirouette forms have different moves
+        'aegislash',   // Shield, Blade forms have different moves
+        'pumpkaboo',   // Size forms have different stats but SAME moves - can deduplicate
+        'gourgeist',   // Size forms have different stats but SAME moves - can deduplicate
+        'hoopa',       // Confined, Unbound forms have different moves
+        'oricorio',    // Baile, Pom-Pom, Pa'u, Sensu forms have different moves
+        'lycanroc',    // Midday, Midnight, Dusk forms have different moves
+        'wishiwashi',  // Solo, School forms have different moves
+        'silvally',    // Memory forms have SAME moves - can deduplicate
+        'necrozma',    // Normal, Dusk Mane, Dawn Wings, Ultra forms have different moves
+        'toxtricity',  // Amped, Low Key forms have different moves
+        'eiscue',      // Ice Face, Noice Face forms have different moves
+        'indeedee',    // Male, Female forms have different moves
+        'urshifu',     // Single Strike, Rapid Strike forms have different moves
+        'basculegion', // Male, Female forms have different moves
+        'oinkologne',  // Male, Female forms have different moves
+        'maushold',    // Family size forms have SAME moves - can deduplicate
+        'squawkabilly',// Plumage forms have SAME moves - can deduplicate
+        'palafin',     // Zero, Hero forms have different moves
+        'tatsugiri',   // Curly, Droopy, Stretchy forms have different moves
+        'dudunsparce', // Segment forms have SAME moves - can deduplicate
+        'gimmighoul',  // Chest, Roaming forms have different moves
+      ];
+      
       // Group by ndexId and prefer default forms
       const ndexMap = new Map<number, Pokemon[]>();
       
@@ -161,31 +199,63 @@ class DatabaseStorage implements IStorage {
           console.log(`[searchPokemonForGame] ndex ${ndexId} has ${forms.length} forms:`, forms.map(f => f.speciesName));
         }
         
-        // Find default form
-        let chosen = forms.find(f => f.speciesName.endsWith('-default'));
+        // Check if this Pokemon has forms with different movesets
+        const baseName = forms[0].speciesName.split('-')[0].toLowerCase();
+        const hasDifferentMovesets = formsWithDifferentMovesets.includes(baseName);
         
-        // If no -default, find form without suffix (base form)
-        if (!chosen) {
-          chosen = forms.find(f => !f.speciesName.includes('-'));
+        if (hasDifferentMovesets) {
+          // Don't deduplicate - add all forms
+          console.log(`[searchPokemonForGame] ${baseName} has different movesets per form - keeping all`);
+          for (const form of forms) {
+            // Clean up display name
+            let displayName = form.speciesName.replace(/-default/, '');
+            displayName = displayName.split('-').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+            
+            finalResults.push({
+              ...form,
+              name: displayName
+            });
+          }
+        } else {
+          // Deduplicate - keep only one form
+          // Find default form
+          let chosen = forms.find(f => f.speciesName.endsWith('-default'));
+          
+          // If no -default, find form without suffix (base form)
+          if (!chosen) {
+            chosen = forms.find(f => !f.speciesName.includes('-'));
+          }
+          
+          // Otherwise, take the first one
+          if (!chosen) {
+            chosen = forms[0];
+          }
+          
+          if (forms.length > 1) {
+            console.log(`[searchPokemonForGame] Chose: ${chosen.speciesName}`);
+          }
+          
+          // Clean up the display name - capitalize and remove -default suffix
+          let baseName = chosen.speciesName.replace(/-default.*/, '').split('-')[0];
+          
+          // Special case for Mr. Mime and similar Pokemon with dots
+          if (baseName === 'mr') {
+            const fullName = chosen.speciesName.replace(/-default.*/, '');
+            baseName = fullName; // Keep "mr-mime" to handle below
+          }
+          
+          // Replace hyphens with spaces and capitalize each word
+          const displayName = baseName.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ');
+          
+          finalResults.push({
+            ...chosen,
+            name: displayName
+          });
         }
-        
-        // Otherwise, take the first one
-        if (!chosen) {
-          chosen = forms[0];
-        }
-        
-        if (forms.length > 1) {
-          console.log(`[searchPokemonForGame] Chose: ${chosen.speciesName}`);
-        }
-        
-        // Clean up the display name - capitalize and remove -default suffix
-        const baseName = chosen.speciesName.replace(/-default.*/, '').split('-')[0];
-        const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-        
-        finalResults.push({
-          ...chosen,
-          name: displayName
-        });
         
         if (finalResults.length >= 20) break;
       }

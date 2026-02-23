@@ -90,29 +90,75 @@ export async function registerRoutes(
     try {
       const { maxGen, seenMovesets = [] } = api.game.start.input.parse(req.body);
       
+      // List of extremely common moves that should appear less frequently
+      const commonMoves = [
+        'Swagger', 'Toxic', 'Protect', 'Rest', 'Sleep Talk', 'Substitute',
+        'Double Team', 'Attract', 'Return', 'Frustration', 'Hidden Power',
+        'Facade', 'Secret Power', 'Natural Gift', 'Captivate', 'Round',
+        'Confide', 'Snore', 'Endure', 'Swagger', 'Mimic', 'Bide'
+      ];
+      
       // Try to load pre-generated puzzles first
       const puzzles = await loadPuzzlesForGen(maxGen);
       
       if (puzzles.length > 0) {
-        // Use pre-generated puzzles (FAST PATH)
+        // Use pre-generated puzzles (FAST PATH) with weighted selection
         let attempts = 0;
         while (attempts < 50) {
           attempts++;
           
-          // Pick a random puzzle
-          const puzzle = puzzles[Math.floor(Math.random() * puzzles.length)];
+          // Weighted random selection
+          let selectedPuzzle;
+          let maxAttempts = 10; // Try up to 10 times to find a good puzzle
           
-          // Get move details
-          const moveDetails = await db.select({
-            id: moves.id,
-            name: moves.name,
-            type: moves.type,
-            power: moves.power,
-            pp: moves.pp,
-            accuracy: moves.accuracy
-          })
-          .from(moves)
-          .where(inArray(moves.id, puzzle.moveIds));
+          for (let i = 0; i < maxAttempts; i++) {
+            const puzzle = puzzles[Math.floor(Math.random() * puzzles.length)];
+            
+            // Get move details to check for common moves
+            const moveDetails = await db.select({
+              id: moves.id,
+              name: moves.name,
+              type: moves.type,
+              power: moves.power,
+              pp: moves.pp,
+              accuracy: moves.accuracy
+            })
+            .from(moves)
+            .where(inArray(moves.id, puzzle.moveIds));
+            
+            // Count how many common moves are in this set
+            const commonMoveCount = moveDetails.filter(m => 
+              commonMoves.some(cm => cm.toLowerCase() === m.name.toLowerCase().replace(/-/g, ' '))
+            ).length;
+            
+            // Weight: 0 common moves = 100% chance, 1 = 70%, 2 = 40%, 3+ = 10%
+            const weights = [1.0, 0.7, 0.4, 0.1];
+            const weight = weights[Math.min(commonMoveCount, 3)];
+            
+            // Random roll - if we pass the weight check, use this puzzle
+            if (Math.random() < weight) {
+              selectedPuzzle = { puzzle, moveDetails };
+              break;
+            }
+          }
+          
+          // If we didn't find a good puzzle after maxAttempts, just use a random one
+          if (!selectedPuzzle) {
+            const puzzle = puzzles[Math.floor(Math.random() * puzzles.length)];
+            const moveDetails = await db.select({
+              id: moves.id,
+              name: moves.name,
+              type: moves.type,
+              power: moves.power,
+              pp: moves.pp,
+              accuracy: moves.accuracy
+            })
+            .from(moves)
+            .where(inArray(moves.id, puzzle.moveIds));
+            selectedPuzzle = { puzzle, moveDetails };
+          }
+          
+          const { puzzle, moveDetails } = selectedPuzzle;
           
           // Create moveset key to check if already seen
           const movesetKey = moveDetails.map(m => m.name).sort().join('|');
@@ -744,36 +790,48 @@ export async function registerRoutes(
         ))
         .orderBy(pokemon.ndexId);
 
-      // Filter to keep only one form per ndex (prefer default)
-      const seenNdex = new Set<number>();
-      const results = [];
+      // Group by ndexId and prefer default forms
+      const ndexMap = new Map<number, any[]>();
       
       for (const pkmn of allResults) {
-        if (!seenNdex.has(pkmn.ndexId)) {
-          // Prefer default form
-          const isDefault = pkmn.speciesName.includes('-default') || 
-                           !pkmn.speciesName.includes('-');
-          
-          if (isDefault) {
-            seenNdex.add(pkmn.ndexId);
-            results.push(pkmn);
-          }
+        if (!ndexMap.has(pkmn.ndexId)) {
+          ndexMap.set(pkmn.ndexId, []);
         }
+        ndexMap.get(pkmn.ndexId)!.push(pkmn);
+      }
+      
+      console.log(`[Pokemon Search] Query: "${query}", found ${allResults.length} results, ${ndexMap.size} unique ndex`);
+      
+      // For each ndex, pick the best form (prefer -default, then no suffix, then first)
+      const results = [];
+      for (const [ndexId, forms] of ndexMap.entries()) {
+        if (forms.length > 1) {
+          console.log(`[Pokemon Search] ndex ${ndexId} has ${forms.length} forms:`, forms.map(f => f.name));
+        }
+        
+        // Find default form
+        let chosen = forms.find(f => f.name.endsWith('-default'));
+        
+        // If no -default, find form without suffix (base form)
+        if (!chosen) {
+          chosen = forms.find(f => !f.name.includes('-'));
+        }
+        
+        // Otherwise, take the first one
+        if (!chosen) {
+          chosen = forms[0];
+        }
+        
+        if (forms.length > 1) {
+          console.log(`[Pokemon Search] Chose: ${chosen.name}`);
+        }
+        
+        results.push(chosen);
         
         if (results.length >= 10) break;
       }
-      
-      // If we don't have enough results, add non-default forms
-      if (results.length < 10) {
-        for (const pkmn of allResults) {
-          if (!seenNdex.has(pkmn.ndexId)) {
-            seenNdex.add(pkmn.ndexId);
-            results.push(pkmn);
-            if (results.length >= 10) break;
-          }
-        }
-      }
 
+      console.log(`[Pokemon Search] Returning ${results.length} results:`, results.map(r => r.name));
       res.json(results);
     } catch (err) {
       console.error("Error in /api/pokemon/search:", err);
