@@ -152,8 +152,8 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
 async function generateAllPuzzles(gen: number) {
   console.log(`\n${'='.repeat(70)}`);
   console.log(`🚀 COMPLETE PUZZLE GENERATION - Generation ${gen}`);
-  console.log(`   Target: ALL unique puzzles (NO cap, with variation)`);
-  console.log(`   Strategy: All rare unique movesets with variation check`);
+  console.log(`   Target: ALL unique puzzles (with variation)`);
+  console.log(`   Strategy: All unique movesets with variation check`);
   console.log(`${'='.repeat(70)}\n`);
   
   const startTime = Date.now();
@@ -292,7 +292,16 @@ async function generateAllPuzzles(gen: number) {
     if (pokemonUnique > 0) {
       console.log(`   ✓ ${pkmn.name}: ${pokemonUnique} puzzles (${pokemonTime}s)`);
     }
+    
+    // Progress update every 10 Pokemon
+    if ((i + 1) % 10 === 0) {
+      const progress = ((i + 1) / filteredPokemon.length * 100).toFixed(1);
+      const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+      console.log(`   📊 Progress: ${i + 1}/${filteredPokemon.length} Pokemon (${progress}%) - ${elapsed}m elapsed`);
+    }
   }
+  
+  console.log(`\n   🎉 Finished processing all ${filteredPokemon.length} Pokemon!\n`);
   
   // Write remaining buffer
   if (buffer.length > 0) {
