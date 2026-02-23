@@ -11,6 +11,7 @@ import { GameHeader } from "@/components/GameHeader";
 import { PokemonCombobox } from "@/components/PokemonCombobox";
 import { Loader2, Lightbulb, Zap, ArrowRight, RotateCcw, Send } from "lucide-react";
 import { Layout } from "@/components/Layout";
+import { useAudio } from "@/contexts/AudioContext";
 
 type GameState = {
   maxGen: number;
@@ -32,6 +33,7 @@ export default function GamePlay() {
   const startGame = useStartGame();
   const submitAnswer = useSubmitAnswer();
   const getHint = useGetHint();
+  const { playSound } = useAudio();
 
   const [selectedPokemon, setSelectedPokemon] = useState<{ id: number; name: string } | null>(null);
 
@@ -129,8 +131,7 @@ export default function GamePlay() {
           });
           
           if (data.correctPokemon?.cryUrl) {
-            const audio = new Audio(data.correctPokemon.cryUrl);
-            audio.play().catch(e => console.error("Error playing cry:", e));
+            playSound(data.correctPokemon.cryUrl);
           }
 
           setState(prev => ({
@@ -160,8 +161,7 @@ export default function GamePlay() {
           
           if (nextAttempt > 3) {
             if (data.correctPokemon?.cryUrl) {
-              const audio = new Audio(data.correctPokemon.cryUrl);
-              audio.play().catch(e => console.error("Error playing cry:", e));
+              playSound(data.correctPokemon.cryUrl);
             }
             setState(prev => ({
               ...prev,
@@ -311,7 +311,12 @@ export default function GamePlay() {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto pb-20">
-        <GameHeader lives={state.lives} score={state.score} onReset={handleReset} />
+        <GameHeader 
+          lives={state.lives} 
+          score={state.score} 
+          difficulty={config.difficulty}
+          onReset={handleReset} 
+        />
 
         <div className="mt-6 mb-8 text-center space-y-2 px-4">
           <h2 className="text-2xl md:text-3xl font-retro text-foreground pixel-text-shadow break-words">
