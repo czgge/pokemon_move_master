@@ -113,20 +113,6 @@ export default function GamePlay() {
 
   const handleGuess = () => {
     if (!state.roundActive || !selectedPokemon) return;
-    
-    // Check if this Pokemon was already guessed wrong in this round
-    if (state.wrongGuesses.includes(selectedPokemon.id)) {
-      console.warn("Pokemon already guessed:", selectedPokemon.id, "wrongGuesses:", state.wrongGuesses);
-      setState(prev => ({
-        ...prev,
-        feedback: { 
-          message: `You already tried ${formatName(selectedPokemon.name)} in this round!`, 
-          type: "error" 
-        }
-      }));
-      setSelectedPokemon(null); // Reset selection
-      return;
-    }
 
     submitAnswer.mutate({
       roundToken: state.roundToken,
@@ -354,7 +340,7 @@ export default function GamePlay() {
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
-              className="flex flex-col items-center justify-center p-8 bg-white pixel-border rounded-lg text-center gap-6"
+              className="flex flex-col items-center justify-center p-8 bg-card pixel-border rounded-lg text-center gap-6"
             >
               <div className="relative">
                 <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full" />
