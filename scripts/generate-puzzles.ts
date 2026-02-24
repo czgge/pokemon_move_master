@@ -60,14 +60,16 @@ async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<nu
   const validVersionIds = await getValidVersionIds(maxGen);
   const pokemonWithPreEvos = await getPokemonWithPreEvolutions(pokemonId);
   
-  const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+  const pokemonMovesList = await db.select({ moveId: pokemonMoves.moveId })
     .from(pokemonMoves)
     .where(and(
       inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
       inArray(pokemonMoves.versionGroupId, validVersionIds)
     ));
   
-  return pokemonMovesList.map(m => m.moveId);
+  // Remove duplicates manually
+  const uniqueMoveIds = [...new Set(pokemonMovesList.map(m => m.moveId))];
+  return uniqueMoveIds;
 }
 
 // Calculate how many Pokemon can learn each move
@@ -189,7 +191,7 @@ async function generatePuzzles() {
   .from(pokemon)
   .where(lte(pokemon.generationId, gen));
   
-  // Filter out cosmetic forms
+  // Filter out cosmetic forms AND Mew
   const filteredPokemon = allPokemon.filter(p => {
     const name = p.speciesName;
     return !name.includes('-cap') &&
@@ -202,10 +204,11 @@ async function generatePuzzles() {
            !name.includes('-partner') &&
            !name.includes('-world') &&
            !name.includes('-gigantamax') &&
-           !name.includes('-totem');
+           !name.includes('-totem') &&
+           name !== 'mew'; // Exclude Mew - handle separately
   });
   
-  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (filtered from ${allPokemon.length})\n`);
+  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded, filtered from ${allPokemon.length})\n`);
   
   // STEP 2: Pre-load all moves for all Pokemon
   console.log("📦 STEP 2: Loading moves for all Pokemon...");

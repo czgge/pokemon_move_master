@@ -57,14 +57,16 @@ async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<nu
   const validVersionIds = await getValidVersionIds(maxGen);
   const pokemonWithPreEvos = await getPokemonWithPreEvolutions(pokemonId);
   
-  const pokemonMovesList = await db.selectDistinct({ moveId: pokemonMoves.moveId })
+  const pokemonMovesList = await db.select({ moveId: pokemonMoves.moveId })
     .from(pokemonMoves)
     .where(and(
       inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
       inArray(pokemonMoves.versionGroupId, validVersionIds)
     ));
   
-  return pokemonMovesList.map(m => m.moveId);
+  // Remove duplicates manually
+  const uniqueMoveIds = [...new Set(pokemonMovesList.map(m => m.moveId))];
+  return uniqueMoveIds;
 }
 
 // Calculate move frequencies
@@ -171,6 +173,7 @@ async function generateAllPuzzles(gen: number) {
   
   const filteredPokemon = allPokemon.filter(p => {
     const name = p.speciesName;
+    // Exclude cosmetic forms AND Mew (too many moves, handle separately)
     return !name.includes('-cap') &&
            !name.includes('-original') &&
            !name.includes('-hoenn') &&
@@ -181,10 +184,11 @@ async function generateAllPuzzles(gen: number) {
            !name.includes('-partner') &&
            !name.includes('-world') &&
            !name.includes('-gigantamax') &&
-           !name.includes('-totem');
+           !name.includes('-totem') &&
+           name !== 'mew'; // Exclude Mew - handle separately
   });
   
-  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon\n`);
+  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded)\n`);
   
   // STEP 2: Load moves
   console.log("📦 STEP 2: Loading moves for all Pokemon...");
