@@ -124,10 +124,20 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
 }
 
 async function generateMewPuzzles() {
-  const gen = 1; // Mew is Gen 1
+  const args = process.argv.slice(2);
+  const genArg = args[0] || process.env.GENERATION;
+  const targetGen = genArg ? parseInt(genArg) : null;
+  
+  if (!targetGen || targetGen < 1 || targetGen > 9) {
+    console.error("❌ Invalid generation. Usage: tsx generate-mew-puzzles.ts <generation>");
+    console.error("   Example: tsx generate-mew-puzzles.ts 3");
+    process.exit(1);
+  }
+  
+  const gen = targetGen;
   
   console.log(`\n${'='.repeat(70)}`);
-  console.log(`🌟 MEW COMPLETE PUZZLE GENERATION`);
+  console.log(`🌟 MEW COMPLETE PUZZLE GENERATION - Generation ${gen}`);
   console.log(`   Target: ALL unique puzzles for Mew`);
   console.log(`   Strategy: Complete generation with variation check`);
   console.log(`${'='.repeat(70)}\n`);
@@ -195,7 +205,7 @@ async function generateMewPuzzles() {
   // Generate puzzles
   console.log(`🎯 Generating ALL puzzles for Mew and streaming to CSV...`);
   
-  const csvPath = path.join(process.cwd(), 'data', 'puzzles-mew.csv');
+  const csvPath = path.join(process.cwd(), 'data', `puzzles-mew-gen${gen}.csv`);
   fs.mkdirSync(path.dirname(csvPath), { recursive: true });
   const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
   fs.writeFileSync(csvPath, csvHeader);
