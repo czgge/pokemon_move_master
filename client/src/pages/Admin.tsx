@@ -111,26 +111,22 @@ export default function Admin() {
     setMessage(null);
 
     try {
-      // Generate for each selected generation
-      for (const gen of selectedGens) {
-        const res = await fetch("/api/admin/generate-puzzles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ generation: gen }),
-        });
-        const data = await res.json();
-
-        if (!data.success) {
-          setMessage({ type: "error", text: `Errore Gen ${gen}: ${data.message}` });
-          break;
-        }
-      }
-      
-      setMessage({ 
-        type: "success", 
-        text: `Generazione RAPIDA avviata per Gen ${selectedGens.join(', ')}! Controlla i log.` 
+      const res = await fetch("/api/admin/generate-puzzles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generations: selectedGens }),
       });
-      setTimeout(loadPuzzleFiles, 5000);
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ 
+          type: "success", 
+          text: data.message
+        });
+        setTimeout(loadPuzzleFiles, 5000);
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione puzzle" });
+      }
     } catch (error) {
       setMessage({ type: "error", text: "Errore di connessione al server" });
     } finally {
@@ -176,26 +172,22 @@ export default function Admin() {
     setMessage(null);
 
     try {
-      // Generate for each selected generation
-      for (const gen of selectedGens) {
-        const res = await fetch("/api/admin/generate-complete-puzzles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ generation: gen }),
-        });
-        const data = await res.json();
-
-        if (!data.success) {
-          setMessage({ type: "error", text: `Errore Gen ${gen}: ${data.message}` });
-          break;
-        }
-      }
-
-      setMessage({ 
-        type: "success", 
-        text: `Generazione COMPLETA avviata per Gen ${selectedGens.join(', ')}! Controlla i log.` 
+      const res = await fetch("/api/admin/generate-complete-puzzles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generations: selectedGens }),
       });
-      setTimeout(loadPuzzleFiles, 10000);
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ 
+          type: "success", 
+          text: data.message
+        });
+        setTimeout(loadPuzzleFiles, 10000);
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione completa" });
+      }
     } catch (error) {
       setMessage({ type: "error", text: "Errore di connessione al server" });
     } finally {
@@ -224,6 +216,36 @@ export default function Admin() {
         setTimeout(loadPuzzleFiles, 10000);
       } else {
         setMessage({ type: "error", text: data.message || "Errore nella generazione completa" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    } finally {
+      setPuzzleLoading(false);
+    }
+  };
+
+  const handleGenerateMewPuzzles = async () => {
+    if (!confirm("⚠️ La generazione COMPLETA dei puzzle di Mew può richiedere 30-60 minuti. Continuare?")) {
+      return;
+    }
+    
+    setPuzzleLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/generate-mew-puzzles", {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ 
+          type: "success", 
+          text: data.message
+        });
+        setTimeout(loadPuzzleFiles, 5000);
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione Mew" });
       }
     } catch (error) {
       setMessage({ type: "error", text: "Errore di connessione al server" });
@@ -471,6 +493,17 @@ export default function Admin() {
           </div>
           <div className="border-t pt-3">
             <RetroButton
+              onClick={handleGenerateMewPuzzles}
+              isLoading={puzzleLoading}
+              disabled={puzzleLoading}
+              variant="outline"
+              className="w-full border-purple-300 text-purple-600 hover:bg-purple-50"
+            >
+              🌟 Genera Mew Completo (~30-60min)
+            </RetroButton>
+          </div>
+          <div className="border-t pt-3">
+            <RetroButton
               onClick={handleStopGeneration}
               variant="outline"
               className="w-full border-red-300 text-red-600 hover:bg-red-50"
@@ -479,7 +512,7 @@ export default function Admin() {
             </RetroButton>
           </div>
           <div className="text-center text-xs text-muted-foreground font-mono">
-            💡 Rapido: ~3 puzzle/Pokemon (5-20min) • Completo: TUTTI i puzzle (1-4h per gen)
+            💡 Rapido: ~3 puzzle/Pokemon (5-20min) • Completo: TUTTI i puzzle (1-4h per gen) • Mew: TUTTI i puzzle (30-60min)
           </div>
         </RetroCard>
 
