@@ -1583,7 +1583,24 @@ export async function registerRoutes(
   // ADMIN ENDPOINT - Download puzzle file
   app.get("/api/admin/download-puzzle/:gen", async (req, res) => {
     try {
-      const gen = parseInt(req.params.gen);
+      const genParam = req.params.gen;
+      
+      // Handle Mew separately
+      if (genParam === 'mew') {
+        const mewFile = path.join(process.cwd(), 'data', 'puzzles-mew.csv');
+        
+        if (!fs.existsSync(mewFile)) {
+          return res.status(404).json({ 
+            success: false, 
+            message: `File puzzle per Mew non trovato. Genera prima i puzzle di Mew.` 
+          });
+        }
+        
+        return res.download(mewFile, 'puzzles-mew.csv');
+      }
+      
+      // Handle regular generations
+      const gen = parseInt(genParam);
       if (gen < 1 || gen > 9) {
         return res.status(400).json({ success: false, message: "Generazione non valida (1-9)" });
       }
@@ -1622,10 +1639,28 @@ export async function registerRoutes(
       }
       
       const files = fs.readdirSync(dataDir)
-        .filter(f => f.startsWith('puzzles-gen') && f.endsWith('.csv'))
+        .filter(f => (f.startsWith('puzzles-gen') || f === 'puzzles-mew.csv') && f.endsWith('.csv'))
         .map(f => {
           const filePath = path.join(dataDir, f);
           const stats = fs.statSync(filePath);
+          
+          // Handle Mew file separately
+          if (f === 'puzzles-mew.csv') {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const lines = content.split('\n').length - 2;
+            
+            return {
+              filename: f,
+              generation: 1, // Mew is Gen 1
+              size: stats.size,
+              puzzleCount: lines,
+              created: stats.mtime,
+              isComplete: true,
+              isMew: true
+            };
+          }
+          
+          // Handle regular generation files
           const genMatch = f.match(/puzzles-gen(\d+)(-complete)?\.csv/);
           const gen = parseInt(genMatch?.[1] || '0');
           const isComplete = !!genMatch?.[2];
@@ -1643,7 +1678,12 @@ export async function registerRoutes(
             isComplete
           };
         })
-        .sort((a, b) => a.generation - b.generation);
+        .sort((a, b) => {
+          // Sort by generation, but put Mew at the end
+          if (a.filename === 'puzzles-mew.csv') return 1;
+          if (b.filename === 'puzzles-mew.csv') return -1;
+          return a.generation - b.generation;
+        });
       
       res.json({ files });
     } catch (error) {
