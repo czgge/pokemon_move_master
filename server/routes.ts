@@ -1307,43 +1307,65 @@ export async function registerRoutes(
   // ADMIN ENDPOINT - Generate puzzle files (FAST version - calls external script)
   app.post("/api/admin/generate-puzzles", async (req, res) => {
     try {
-      const { generation } = req.body;
-      const gen = generation || 1;
+      const { generation, generations } = req.body;
       
-      if (gen < 1 || gen > 9) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Generazione non valida (1-9)" 
-        });
+      // Support both single generation and multiple generations
+      const gens = generations || (generation ? [generation] : [1]);
+      
+      // Validate all generations
+      for (const gen of gens) {
+        if (gen < 1 || gen > 9) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `Generazione non valida: ${gen} (deve essere 1-9)` 
+          });
+        }
       }
       
-      console.log(`Starting FAST puzzle generation for Gen ${gen}...`);
+      console.log(`Starting FAST puzzle generation for Gen ${gens.join(', ')}...`);
       
       res.json({ 
         success: true, 
-        message: `Generazione RAPIDA puzzle per Gen ${gen} avviata! Controlla i log del server per il progresso. Target: ~10,000 puzzles.` 
+        message: `Generazione RAPIDA avviata per Gen ${gens.join(', ')}! Controlla i log del server.` 
       });
       
-      // Run generation script in background
+      // Run generation script for each generation sequentially in background
       const { spawn } = await import('child_process');
       const scriptPath = path.join(process.cwd(), 'scripts', 'generate-puzzles.ts');
       
-      const child = spawn('npx', ['tsx', scriptPath, gen.toString()], {
-        cwd: process.cwd(),
-        stdio: 'inherit', // Show output in server console
-        shell: true
-      });
-      
-      child.on('error', (error) => {
-        console.error(`Error running puzzle generation script:`, error);
-      });
-      
-      child.on('exit', (code) => {
-        if (code === 0) {
-          console.log(`✅ Puzzle generation for Gen ${gen} completed successfully`);
-        } else {
-          console.error(`❌ Puzzle generation for Gen ${gen} failed with code ${code}`);
+      (async () => {
+        for (const gen of gens) {
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`STARTING FAST GENERATION - GEN ${gen}`);
+          console.log(`${'='.repeat(60)}\n`);
+          
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn('npx', ['tsx', scriptPath, gen.toString()], {
+              cwd: process.cwd(),
+              stdio: 'inherit',
+              shell: true
+            });
+            
+            child.on('error', (error) => {
+              console.error(`Error running puzzle generation for Gen ${gen}:`, error);
+              reject(error);
+            });
+            
+            child.on('exit', (code) => {
+              if (code === 0) {
+                console.log(`✅ Gen ${gen} completed successfully`);
+                resolve();
+              } else {
+                console.error(`❌ Gen ${gen} failed with code ${code}`);
+                reject(new Error(`Gen ${gen} failed`));
+              }
+            });
+          });
         }
+        
+        console.log("\n🎉 ALL SELECTED GENERATIONS COMPLETE!");
+      })().catch(error => {
+        console.error("Error in generation loop:", error);
       });
       
     } catch (error) {
@@ -1428,43 +1450,74 @@ export async function registerRoutes(
   // ADMIN ENDPOINT - Generate COMPLETE puzzle files (ALL combinations - calls external script)
   app.post("/api/admin/generate-complete-puzzles", async (req, res) => {
     try {
-      const { generation } = req.body;
-      const gen = generation || null;
+      const { generation, generations } = req.body;
       
-      if (gen && (gen < 1 || gen > 9)) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Generazione non valida (1-9)" 
-        });
-      }
+      // Support both single generation and multiple generations
+      const gens = generations || (generation ? [generation] : null);
       
-      if (gen) {
-        console.log(`Starting COMPLETE puzzle generation for Gen ${gen}...`);
+      if (gens) {
+        // Validate all generations
+        for (const gen of gens) {
+          if (gen < 1 || gen > 9) {
+            return res.status(400).json({ 
+              success: false, 
+              message: `Generazione non valida: ${gen} (deve essere 1-9)` 
+            });
+          }
+        }
+        
+        console.log(`Starting COMPLETE puzzle generation for Gen ${gens.join(', ')}...`);
         res.json({ 
           success: true, 
-          message: `Generazione COMPLETA per Gen ${gen} avviata! Controlla i log. Ci vorranno 1-4 ore.` 
+          message: `Generazione COMPLETA avviata per Gen ${gens.join(', ')}! Controlla i log.` 
         });
       } else {
         console.log("Starting COMPLETE puzzle generation for ALL generations (1-9)...");
         res.json({ 
           success: true, 
-          message: "Generazione COMPLETA per TUTTE le generazioni avviata! Controlla i log. Ci vorranno 10-20 ore." 
+          message: "Generazione COMPLETA per TUTTE le generazioni avviata! Controlla i log." 
         });
       }
       
       // Run complete generation script in background
       const { spawn } = await import('child_process');
       const scriptPath = path.join(process.cwd(), 'scripts', 'generate-all-puzzles.ts');
-      const args = gen ? [gen.toString()] : []; // If no gen, script will do all
       
-      const child = spawn('npx', ['tsx', scriptPath, ...args], {
-        cwd: process.cwd(),
-        stdio: 'inherit', // Show output in server console
-        shell: true
-      });
-      
-      child.on('error', (error) => {
-        console.error(`Error running complete puzzle generation script:`, error);
+      (async () => {
+        const gensToProcess = gens || [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        
+        for (const gen of gensToProcess) {
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`STARTING COMPLETE GENERATION - GEN ${gen}`);
+          console.log(`${'='.repeat(60)}\n`);
+          
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn('npx', ['tsx', scriptPath, gen.toString()], {
+              cwd: process.cwd(),
+              stdio: 'inherit',
+              shell: true
+            });
+            
+            child.on('error', (error) => {
+              console.error(`Error running complete generation for Gen ${gen}:`, error);
+              reject(error);
+            });
+            
+            child.on('exit', (code) => {
+              if (code === 0) {
+                console.log(`✅ Gen ${gen} completed successfully`);
+                resolve();
+              } else {
+                console.error(`❌ Gen ${gen} failed with code ${code}`);
+                reject(new Error(`Gen ${gen} failed`));
+              }
+            });
+          });
+        }
+        
+        console.log("\n🎉 ALL SELECTED GENERATIONS COMPLETE!");
+      })().catch(error => {
+        console.error("Error in generation loop:", error);
       });
       
       child.on('exit', (code) => {
@@ -1480,6 +1533,48 @@ export async function registerRoutes(
       res.status(500).json({ 
         success: false, 
         message: "Errore nell'avvio della generazione completa", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ADMIN ENDPOINT - Generate Mew puzzles
+  app.post("/api/admin/generate-mew-puzzles", async (req, res) => {
+    try {
+      console.log("Starting Mew puzzle generation...");
+      
+      res.json({ 
+        success: true, 
+        message: "Generazione COMPLETA puzzle Mew avviata! Controlla i log del server per il progresso. Tempo stimato: 30-60 minuti." 
+      });
+      
+      // Run Mew generation script in background
+      const { spawn } = await import('child_process');
+      const scriptPath = path.join(process.cwd(), 'scripts', 'generate-mew-puzzles.ts');
+      
+      const child = spawn('npx', ['tsx', scriptPath], {
+        cwd: process.cwd(),
+        stdio: 'inherit',
+        shell: true
+      });
+      
+      child.on('error', (error) => {
+        console.error("Error running Mew generation:", error);
+      });
+      
+      child.on('exit', (code) => {
+        if (code === 0) {
+          console.log(`✅ Mew puzzle generation completed successfully`);
+        } else {
+          console.error(`❌ Mew puzzle generation failed with code ${code}`);
+        }
+      });
+      
+    } catch (error) {
+      console.error("Error starting Mew generation:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nell'avvio della generazione Mew", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }
