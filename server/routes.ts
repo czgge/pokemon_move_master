@@ -1541,33 +1541,60 @@ export async function registerRoutes(
   // ADMIN ENDPOINT - Generate Mew puzzles
   app.post("/api/admin/generate-mew-puzzles", async (req, res) => {
     try {
-      console.log("Starting Mew puzzle generation...");
+      const { generations } = req.body;
+      const gens = Array.isArray(generations) && generations.length > 0 ? generations : null;
+      
+      if (!gens) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Seleziona almeno una generazione" 
+        });
+      }
+      
+      console.log(`Starting Mew puzzle generation for generations: ${gens.join(', ')}`);
       
       res.json({ 
         success: true, 
-        message: "Generazione COMPLETA puzzle Mew avviata! Controlla i log del server per il progresso. Tempo stimato: 30-60 minuti." 
+        message: `Generazione COMPLETA puzzle Mew avviata per Gen ${gens.join(', ')}! Controlla i log del server per il progresso. Tempo stimato: ~${gens.length * 45} minuti.` 
       });
       
-      // Run Mew generation script in background
+      // Run Mew generation script in background for each generation
       const { spawn } = await import('child_process');
       const scriptPath = path.join(process.cwd(), 'scripts', 'generate-mew-puzzles.ts');
       
-      const child = spawn('npx', ['tsx', scriptPath], {
-        cwd: process.cwd(),
-        stdio: 'inherit',
-        shell: true
-      });
-      
-      child.on('error', (error) => {
-        console.error("Error running Mew generation:", error);
-      });
-      
-      child.on('exit', (code) => {
-        if (code === 0) {
-          console.log(`✅ Mew puzzle generation completed successfully`);
-        } else {
-          console.error(`❌ Mew puzzle generation failed with code ${code}`);
+      (async () => {
+        for (const gen of gens) {
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`STARTING MEW GENERATION - GEN ${gen}`);
+          console.log(`${'='.repeat(60)}\n`);
+          
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn('npx', ['tsx', scriptPath, gen.toString()], {
+              cwd: process.cwd(),
+              stdio: 'inherit',
+              shell: true
+            });
+            
+            child.on('error', (error) => {
+              console.error(`Error running Mew generation for Gen ${gen}:`, error);
+              reject(error);
+            });
+            
+            child.on('exit', (code) => {
+              if (code === 0) {
+                console.log(`✅ Mew Gen ${gen} completed successfully`);
+                resolve();
+              } else {
+                console.error(`❌ Mew Gen ${gen} failed with code ${code}`);
+                reject(new Error(`Mew Gen ${gen} failed`));
+              }
+            });
+          });
         }
+        
+        console.log("\n🎉 ALL MEW GENERATIONS COMPLETE!");
+      })().catch(error => {
+        console.error("Error in Mew generation loop:", error);
       });
       
     } catch (error) {
@@ -1585,18 +1612,19 @@ export async function registerRoutes(
     try {
       const genParam = req.params.gen;
       
-      // Handle Mew separately
-      if (genParam === 'mew') {
-        const mewFile = path.join(process.cwd(), 'data', 'puzzles-mew.csv');
+      // Handle Mew files (format: mew-1, mew-2, etc.)
+      if (genParam.startsWith('mew-')) {
+        const gen = parseInt(genParam.split('-')[1]);
+        const mewFile = path.join(process.cwd(), 'data', `puzzles-mew-gen${gen}.csv`);
         
         if (!fs.existsSync(mewFile)) {
           return res.status(404).json({ 
             success: false, 
-            message: `File puzzle per Mew non trovato. Genera prima i puzzle di Mew.` 
+            message: `File puzzle per Mew Gen ${gen} non trovato. Genera prima i puzzle di Mew.` 
           });
         }
         
-        return res.download(mewFile, 'puzzles-mew.csv');
+        return res.download(mewFile, `puzzles-mew-gen${gen}.csv`);
       }
       
       // Handle regular generations
@@ -1639,19 +1667,22 @@ export async function registerRoutes(
       }
       
       const files = fs.readdirSync(dataDir)
-        .filter(f => (f.startsWith('puzzles-gen') || f === 'puzzles-mew.csv') && f.endsWith('.csv'))
+        .filter(f => (f.startsWith('puzzles-gen') || f.startsWith('puzzles-mew')) && f.endsWith('.csv'))
         .map(f => {
           const filePath = path.join(dataDir, f);
           const stats = fs.statSync(filePath);
           
-          // Handle Mew file separately
-          if (f === 'puzzles-mew.csv') {
+          // Handle Mew files
+          if (f.startsWith('puzzles-mew')) {
+            const mewGenMatch = f.match(/puzzles-mew-gen(\d+)\.csv/);
+            const gen = mewGenMatch ? parseInt(mewGenMatch[1]) : 1;
+            
             const content = fs.readFileSync(filePath, 'utf-8');
             const lines = content.split('\n').length - 2;
             
             return {
               filename: f,
-              generation: 1, // Mew is Gen 1
+              generation: gen,
               size: stats.size,
               puzzleCount: lines,
               created: stats.mtime,
@@ -1679,10 +1710,14 @@ export async function registerRoutes(
           };
         })
         .sort((a, b) => {
-          // Sort by generation, but put Mew at the end
-          if (a.filename === 'puzzles-mew.csv') return 1;
-          if (b.filename === 'puzzles-mew.csv') return -1;
-          return a.generation - b.generation;
+          // Sort by generation first
+          if (a.generation !== b.generation) {
+            return a.generation - b.generation;
+          }
+          // Within same generation, put Mew after regular files
+          if ((a as any).isMew && !(b as any).isMew) return 1;
+          if (!(a as any).isMew && (b as any).isMew) return -1;
+          return 0;
         });
       
       res.json({ files });
