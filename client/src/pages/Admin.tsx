@@ -277,11 +277,19 @@ export default function Admin() {
     }
   };
 
-  const handleDownloadPuzzle = (gen: number) => {
+  const handleDownloadPuzzle = (filename: string, gen: number) => {
     // Create a temporary link element to force download
     const link = document.createElement('a');
-    link.href = `/api/admin/download-puzzle/${gen}`;
-    link.download = `puzzles-gen${gen}.csv`;
+    
+    // Check if it's the Mew file
+    if (filename === 'puzzles-mew.csv') {
+      link.href = `/api/admin/download-puzzle/mew`;
+      link.download = 'puzzles-mew.csv';
+    } else {
+      link.href = `/api/admin/download-puzzle/${gen}`;
+      link.download = `puzzles-gen${gen}.csv`;
+    }
+    
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -540,15 +548,24 @@ export default function Admin() {
                   <div key={file.filename} className="flex items-center justify-between p-3 pixel-border-sm bg-muted/30">
                     <div className="flex-1">
                       <p className="font-mono text-sm font-bold">
-                        Gen {file.generation}
-                        {file.isComplete && <span className="ml-2 text-xs text-blue-600">✨ COMPLETO</span>}
+                        {(file as any).isMew ? (
+                          <>
+                            🌟 Mew
+                            <span className="ml-2 text-xs text-purple-600">✨ COMPLETO</span>
+                          </>
+                        ) : (
+                          <>
+                            Gen {file.generation}
+                            {file.isComplete && <span className="ml-2 text-xs text-blue-600">✨ COMPLETO</span>}
+                          </>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {file.puzzleCount.toLocaleString()} puzzle • {(file.size / 1024).toFixed(1)} KB
                       </p>
                     </div>
                     <RetroButton
-                      onClick={() => handleDownloadPuzzle(file.generation)}
+                      onClick={() => handleDownloadPuzzle(file.filename, file.generation)}
                       variant="outline"
                       className="text-xs"
                     >
