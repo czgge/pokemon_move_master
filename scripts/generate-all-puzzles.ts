@@ -172,7 +172,7 @@ async function generateAllPuzzles(gen: number) {
   .where(lte(pokemon.generationId, gen));
   
   const filteredPokemon = allPokemon.filter(p => {
-    const name = p.speciesName;
+    const name = p.speciesName.toLowerCase();
     // Exclude cosmetic forms AND Mew (too many moves, handle separately)
     return !name.includes('-cap') &&
            !name.includes('-original') &&
@@ -185,10 +185,11 @@ async function generateAllPuzzles(gen: number) {
            !name.includes('-world') &&
            !name.includes('-gigantamax') &&
            !name.includes('-totem') &&
-           name !== 'mew'; // Exclude Mew - handle separately
+           name !== 'mew' &&
+           name !== 'mew-default'; // Exclude Mew and its default form
   });
   
-  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded)\n`);
+  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded, filtered from ${allPokemon.length})\n`);
   
   // STEP 2: Load moves
   console.log("📦 STEP 2: Loading moves for all Pokemon...");

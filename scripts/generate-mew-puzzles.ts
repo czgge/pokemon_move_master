@@ -143,15 +143,22 @@ async function generateMewPuzzles() {
     speciesName: pokemon.speciesName
   })
   .from(pokemon)
-  .where(eq(pokemon.speciesName, 'mew'));
+  .where(lte(pokemon.generationId, gen));
   
-  if (mewList.length === 0) {
+  // Filter for Mew (could be 'mew' or 'mew-default')
+  const mewCandidates = mewList.filter(p => {
+    const name = p.speciesName.toLowerCase();
+    return name === 'mew' || name === 'mew-default';
+  });
+  
+  if (mewCandidates.length === 0) {
     console.error("❌ Mew not found in database!");
+    console.error("   Searched for: 'mew' or 'mew-default'");
     process.exit(1);
   }
   
-  const mew = mewList[0];
-  console.log(`   ✓ Found Mew (ID: ${mew.id}, Ndex: ${mew.ndexId})\n`);
+  const mew = mewCandidates[0];
+  console.log(`   ✓ Found Mew (ID: ${mew.id}, Ndex: ${mew.ndexId}, Species: ${mew.speciesName})\n`);
   
   // Load Mew's moves
   console.log("📦 Loading Mew's moves...");

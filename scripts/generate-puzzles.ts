@@ -193,7 +193,7 @@ async function generatePuzzles() {
   
   // Filter out cosmetic forms AND Mew
   const filteredPokemon = allPokemon.filter(p => {
-    const name = p.speciesName;
+    const name = p.speciesName.toLowerCase();
     return !name.includes('-cap') &&
            !name.includes('-original') &&
            !name.includes('-hoenn') &&
@@ -205,7 +205,8 @@ async function generatePuzzles() {
            !name.includes('-world') &&
            !name.includes('-gigantamax') &&
            !name.includes('-totem') &&
-           name !== 'mew'; // Exclude Mew - handle separately
+           name !== 'mew' &&
+           name !== 'mew-default'; // Exclude Mew and its default form
   });
   
   console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded, filtered from ${allPokemon.length})\n`);
