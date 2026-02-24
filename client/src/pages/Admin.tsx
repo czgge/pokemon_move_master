@@ -225,7 +225,13 @@ export default function Admin() {
   };
 
   const handleGenerateMewPuzzles = async () => {
-    if (!confirm("⚠️ La generazione COMPLETA dei puzzle di Mew può richiedere 30-60 minuti. Continuare?")) {
+    if (selectedGens.length === 0) {
+      setMessage({ type: "error", text: "Seleziona almeno una generazione" });
+      return;
+    }
+    
+    const totalHours = selectedGens.length * 0.75; // Estimate 45 min per gen for Mew
+    if (!confirm(`⚠️ La generazione COMPLETA dei puzzle di Mew può richiedere ~${totalHours.toFixed(1)} ore per ${selectedGens.length} generazioni. Continuare?`)) {
       return;
     }
     
@@ -235,6 +241,8 @@ export default function Admin() {
     try {
       const res = await fetch("/api/admin/generate-mew-puzzles", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generations: selectedGens }),
       });
       const data = await res.json();
 
@@ -281,10 +289,10 @@ export default function Admin() {
     // Create a temporary link element to force download
     const link = document.createElement('a');
     
-    // Check if it's the Mew file
-    if (filename === 'puzzles-mew.csv') {
-      link.href = `/api/admin/download-puzzle/mew`;
-      link.download = 'puzzles-mew.csv';
+    // Check if it's a Mew file
+    if (filename.startsWith('puzzles-mew')) {
+      link.href = `/api/admin/download-puzzle/mew-${gen}`;
+      link.download = filename;
     } else {
       link.href = `/api/admin/download-puzzle/${gen}`;
       link.download = `puzzles-gen${gen}.csv`;
@@ -503,11 +511,11 @@ export default function Admin() {
             <RetroButton
               onClick={handleGenerateMewPuzzles}
               isLoading={puzzleLoading}
-              disabled={puzzleLoading}
+              disabled={puzzleLoading || selectedGens.length === 0}
               variant="outline"
               className="w-full border-purple-300 text-purple-600 hover:bg-purple-50"
             >
-              🌟 Genera Mew Completo (~30-60min)
+              🌟 Genera Mew Completo (~45min/gen)
             </RetroButton>
           </div>
           <div className="border-t pt-3">
