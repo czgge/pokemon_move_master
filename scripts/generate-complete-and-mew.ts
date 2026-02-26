@@ -138,7 +138,7 @@ function hasMinimumVariation(moveIds: number[], previousCombos: Set<string>): bo
 async function generateCompletePuzzles(gen: number) {
   console.log(`\n${'='.repeat(70)}`);
   console.log(`🚀 COMPLETE PUZZLE GENERATION - Generation ${gen}`);
-  console.log(`   Target: ALL unique puzzles (excluding Mew)`);
+  console.log(`   Target: ALL unique puzzles (INCLUDING Mew)`);
   console.log(`${'='.repeat(70)}\n`);
   
   const startTime = Date.now();
@@ -155,6 +155,7 @@ async function generateCompletePuzzles(gen: number) {
   
   const filteredPokemon = allPokemon.filter(p => {
     const name = p.speciesName.toLowerCase();
+    // Include Mew, exclude only cosmetic forms
     return !name.includes('-cap') &&
            !name.includes('-original') &&
            !name.includes('-hoenn') &&
@@ -165,12 +166,10 @@ async function generateCompletePuzzles(gen: number) {
            !name.includes('-partner') &&
            !name.includes('-world') &&
            !name.includes('-gigantamax') &&
-           !name.includes('-totem') &&
-           name !== 'mew' &&
-           name !== 'mew-default';
+           !name.includes('-totem');
   });
   
-  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded)\n`);
+  console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (INCLUDING Mew)\n`);
   
   console.log("📦 Loading moves for all Pokemon...");
   const allPokemonMoves = new Map<number, Set<number>>();
@@ -206,11 +205,15 @@ async function generateCompletePuzzles(gen: number) {
     if (moveIds.length < 4) continue;
     
     let pokemonUnique = 0;
+    const pokemonStartTime = Date.now();
     
     if (!pokemonPreviousCombos.has(pkmn.id)) {
       pokemonPreviousCombos.set(pkmn.id, new Set());
     }
     const previousCombos = pokemonPreviousCombos.get(pkmn.id)!;
+    
+    // Check if this is Mew (has many moves)
+    const isMew = pkmn.speciesName.toLowerCase().includes('mew');
     
     for (const combo of generateCombinations(moveIds)) {
       if (!isUniqueMoveset(combo, pkmn.id, allPokemonMoves)) continue;
@@ -226,10 +229,18 @@ async function generateCompletePuzzles(gen: number) {
         fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
         buffer = [];
       }
+      
+      // Progress for Mew (has many combinations)
+      if (isMew && pokemonUnique % 100 === 0) {
+        const elapsed = ((Date.now() - pokemonStartTime) / 1000 / 60).toFixed(1);
+        console.log(`   🌟 Mew progress: ${pokemonUnique} puzzles (${elapsed}m)`);
+      }
     }
     
+    const pokemonTime = ((Date.now() - pokemonStartTime) / 1000).toFixed(1);
     if (pokemonUnique > 0) {
-      console.log(`   ✓ ${pkmn.name}: ${pokemonUnique} puzzles`);
+      const icon = isMew ? '🌟' : '✓';
+      console.log(`   ${icon} ${pkmn.name}: ${pokemonUnique} puzzles (${pokemonTime}s)`);
     }
     
     if ((i + 1) % 10 === 0) {
@@ -244,103 +255,10 @@ async function generateCompletePuzzles(gen: number) {
   }
   
   const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-  console.log(`\n✅ Complete puzzles: ${totalPuzzles.toLocaleString()} (${totalTime}m)\n`);
+  const fileSize = (fs.statSync(csvPath).size / 1024 / 1024).toFixed(2);
   
-  return totalPuzzles;
-}
-
-async function generateMewPuzzles(gen: number) {
-  console.log(`\n${'='.repeat(70)}`);
-  console.log(`🌟 MEW PUZZLE GENERATION - Generation ${gen}`);
-  console.log(`${'='.repeat(70)}\n`);
-  
-  const startTime = Date.now();
-  
-  console.log("🔍 Finding Mew...");
-  const mewList = await db.select({
-    id: pokemon.id,
-    name: pokemon.name,
-    ndexId: pokemon.ndexId,
-    speciesName: pokemon.speciesName
-  })
-  .from(pokemon)
-  .where(lte(pokemon.generationId, gen));
-  
-  const mewCandidates = mewList.filter(p => {
-    const name = p.speciesName.toLowerCase();
-    return name === 'mew' || name === 'mew-default';
-  });
-  
-  if (mewCandidates.length === 0) {
-    console.error("❌ Mew not found!");
-    return 0;
-  }
-  
-  const mew = mewCandidates[0];
-  console.log(`   ✓ Found Mew (ID: ${mew.id})\n`);
-  
-  console.log("📦 Loading Mew's moves...");
-  const moveIds = await getMovesForPokemon(mew.id, gen);
-  console.log(`   ✓ Mew can learn ${moveIds.length} moves\n`);
-  
-  if (moveIds.length < 4) {
-    console.error("❌ Mew has less than 4 moves!");
-    return 0;
-  }
-  
-  console.log("📦 Loading all Pokemon moves...");
-  const allPokemon = await db.select({
-    id: pokemon.id,
-    speciesName: pokemon.speciesName
-  })
-  .from(pokemon)
-  .where(lte(pokemon.generationId, gen));
-  
-  const allPokemonMoves = new Map<number, Set<number>>();
-  for (const pkmn of allPokemon) {
-    const moves = await getMovesForPokemon(pkmn.id, gen);
-    allPokemonMoves.set(pkmn.id, new Set(moves));
-  }
-  console.log(`   ✓ Loaded moves for ${allPokemon.length} Pokemon\n`);
-  
-  console.log(`🎯 Generating Mew puzzles...`);
-  
-  const csvPath = path.join(process.cwd(), 'data', `puzzles-mew-gen${gen}.csv`);
-  fs.mkdirSync(path.dirname(csvPath), { recursive: true });
-  const csvHeader = "pokemonId,pokemonName,ndexId,moveIds,generation\n";
-  fs.writeFileSync(csvPath, csvHeader);
-  
-  const previousCombos = new Set<string>();
-  let totalPuzzles = 0;
-  let buffer: string[] = [];
-  const BUFFER_SIZE = 1000;
-  
-  for (const combo of generateCombinations(moveIds)) {
-    if (!isUniqueMoveset(combo, mew.id, allPokemonMoves)) continue;
-    if (!hasMinimumVariation(combo, previousCombos)) continue;
-    
-    const comboKey = combo.join(',');
-    buffer.push(`${mew.id},${mew.name},${mew.ndexId},"${comboKey}",${gen}`);
-    previousCombos.add(comboKey);
-    totalPuzzles++;
-    
-    if (buffer.length >= BUFFER_SIZE) {
-      fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
-      buffer = [];
-    }
-    
-    if (totalPuzzles % 100 === 0) {
-      const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-      console.log(`   Progress: ${totalPuzzles.toLocaleString()} puzzles (${elapsed}m)`);
-    }
-  }
-  
-  if (buffer.length > 0) {
-    fs.appendFileSync(csvPath, buffer.join('\n') + '\n');
-  }
-  
-  const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-  console.log(`\n✅ Mew puzzles: ${totalPuzzles.toLocaleString()} (${totalTime}m)\n`);
+  console.log(`\n✅ Complete puzzles (including Mew): ${totalPuzzles.toLocaleString()} (${totalTime}m)`);
+  console.log(`   File: ${csvPath} (${fileSize} MB)\n`);
   
   return totalPuzzles;
 }
@@ -356,27 +274,22 @@ async function main() {
   }
   
   console.log(`\n${'='.repeat(70)}`);
-  console.log(`🎮 COMPLETE + MEW PUZZLE GENERATION`);
+  console.log(`🎮 COMPLETE PUZZLE GENERATION (INCLUDING MEW)`);
   console.log(`   Generation: ${targetGen}`);
-  console.log(`   This will generate BOTH complete and Mew puzzles`);
+  console.log(`   This will generate ALL puzzles in a single file`);
   console.log(`${'='.repeat(70)}\n`);
   
   const overallStart = Date.now();
   
-  // Generate complete puzzles (excluding Mew)
-  const completePuzzles = await generateCompletePuzzles(targetGen);
-  
-  // Generate Mew puzzles
-  const mewPuzzles = await generateMewPuzzles(targetGen);
+  // Generate complete puzzles (including Mew)
+  const totalPuzzles = await generateCompletePuzzles(targetGen);
   
   const totalTime = ((Date.now() - overallStart) / 1000 / 60).toFixed(1);
   
   console.log(`\n${'='.repeat(70)}`);
-  console.log(`🎉 ALL GENERATION COMPLETE!`);
+  console.log(`🎉 GENERATION COMPLETE!`);
   console.log(`   Total time: ${totalTime} minutes`);
-  console.log(`   Complete puzzles: ${completePuzzles.toLocaleString()}`);
-  console.log(`   Mew puzzles: ${mewPuzzles.toLocaleString()}`);
-  console.log(`   Grand total: ${(completePuzzles + mewPuzzles).toLocaleString()}`);
+  console.log(`   Total puzzles: ${totalPuzzles.toLocaleString()}`);
   console.log(`${'='.repeat(70)}\n`);
   
   process.exit(0);
