@@ -262,6 +262,44 @@ export default function Admin() {
     }
   };
 
+  const handleGenerateCompleteAndMew = async () => {
+    if (selectedGens.length === 0) {
+      setMessage({ type: "error", text: "Seleziona almeno una generazione" });
+      return;
+    }
+    
+    const totalHours = selectedGens.length * 2.5; // Estimate 2-3 hours per gen
+    if (!confirm(`⚠️ La generazione COMPLETA + MEW può richiedere ~${totalHours.toFixed(1)} ore per ${selectedGens.length} generazioni. Continuare?`)) {
+      return;
+    }
+    
+    setPuzzleLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/admin/generate-complete-and-mew", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generations: selectedGens }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setMessage({ 
+          type: "success", 
+          text: data.message
+        });
+        setTimeout(loadPuzzleFiles, 10000);
+      } else {
+        setMessage({ type: "error", text: data.message || "Errore nella generazione completa+mew" });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Errore di connessione al server" });
+    } finally {
+      setPuzzleLoading(false);
+    }
+  };
+
   const handleStopGeneration = async () => {
     if (!confirm("Vuoi fermare la generazione in corso?")) {
       return;
@@ -507,7 +545,7 @@ export default function Admin() {
               Tutte Gen - Completo
             </RetroButton>
           </div>
-          <div className="border-t pt-3">
+          <div className="border-t pt-3 space-y-2">
             <RetroButton
               onClick={handleGenerateMewPuzzles}
               isLoading={puzzleLoading}
@@ -516,6 +554,15 @@ export default function Admin() {
               className="w-full border-purple-300 text-purple-600 hover:bg-purple-50"
             >
               🌟 Genera Mew Completo (~45min/gen)
+            </RetroButton>
+            <RetroButton
+              onClick={handleGenerateCompleteAndMew}
+              isLoading={puzzleLoading}
+              disabled={puzzleLoading || selectedGens.length === 0}
+              variant="outline"
+              className="w-full border-green-300 text-green-600 hover:bg-green-50"
+            >
+              🎯 Completo + Mew (~2-3h/gen)
             </RetroButton>
           </div>
           <div className="border-t pt-3">
@@ -528,7 +575,7 @@ export default function Admin() {
             </RetroButton>
           </div>
           <div className="text-center text-xs text-muted-foreground font-mono">
-            💡 Rapido: ~3 puzzle/Pokemon (5-20min) • Completo: TUTTI i puzzle (1-4h per gen) • Mew: TUTTI i puzzle (30-60min)
+            💡 Rapido: ~3 puzzle/Pokemon (5-20min) • Completo: TUTTI i puzzle (1-4h) • Mew: TUTTI i puzzle (30-60min) • Completo+Mew: TUTTO insieme (2-3h)
           </div>
         </RetroCard>
 
