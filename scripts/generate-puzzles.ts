@@ -194,19 +194,60 @@ async function generatePuzzles() {
   // Filter out cosmetic forms AND Mew
   const filteredPokemon = allPokemon.filter(p => {
     const name = p.speciesName.toLowerCase();
-    return !name.includes('-cap') &&
-           !name.includes('-original') &&
-           !name.includes('-hoenn') &&
-           !name.includes('-sinnoh') &&
-           !name.includes('-unova') &&
-           !name.includes('-kalos') &&
-           !name.includes('-alola') &&
-           !name.includes('-partner') &&
-           !name.includes('-world') &&
-           !name.includes('-gigantamax') &&
-           !name.includes('-totem') &&
-           name !== 'mew' &&
-           name !== 'mew-default'; // Exclude Mew and its default form
+    
+    // Exclude cosmetic forms
+    if (name.includes('-cap') ||
+        name.includes('-original') ||
+        name.includes('-hoenn') ||
+        name.includes('-sinnoh') ||
+        name.includes('-unova') ||
+        name.includes('-kalos') ||
+        name.includes('-alola') ||
+        name.includes('-partner') ||
+        name.includes('-world') ||
+        name.includes('-gigantamax') ||
+        name.includes('-totem')) {
+      return false;
+    }
+    
+    // For Pokemon with type-based forms (same learnset), keep only -default
+    // Arceus has forms: arceus-normal, arceus-fighting, etc. (all same moves)
+    // Silvally has forms: silvally-normal, silvally-fighting, etc. (all same moves)
+    if ((name.startsWith('arceus-') || name.startsWith('silvally-')) && !name.endsWith('-default')) {
+      return false;
+    }
+    
+    // For Vivillon (pattern forms, same learnset), keep only -default or base
+    if (name.startsWith('vivillon-') && !name.endsWith('-default') && name !== 'vivillon') {
+      return false;
+    }
+    
+    // For Minior (color forms, same learnset), keep only -default or base
+    if (name.startsWith('minior-') && !name.endsWith('-default') && name !== 'minior') {
+      return false;
+    }
+    
+    // For Flabébé (flower color forms, same learnset), keep only -default or base
+    if (name.startsWith('flabebe-') && !name.endsWith('-default') && name !== 'flabebe') {
+      return false;
+    }
+    
+    // For Floette (flower color forms, same learnset), keep only -default or base
+    if (name.startsWith('floette-') && !name.endsWith('-default') && name !== 'floette') {
+      return false;
+    }
+    
+    // For Florges (flower color forms, same learnset), keep only -default or base
+    if (name.startsWith('florges-') && !name.endsWith('-default') && name !== 'florges') {
+      return false;
+    }
+    
+    // Exclude Mew (too many moves, handle separately)
+    if (name === 'mew' || name === 'mew-default') {
+      return false;
+    }
+    
+    return true;
   });
   
   console.log(`   ✓ Found ${filteredPokemon.length} Pokemon (Mew excluded, filtered from ${allPokemon.length})\n`);
