@@ -332,10 +332,10 @@ export async function registerRoutes(
               .where(inArray(moves.name, puzzleMoveNames));
             const puzzleMoveIds = puzzleMoves.map(m => m.id);
             
-            // Get valid versions for the generation
+            // Get valid versions for the EXACT generation (not cumulative)
             const validVersions = await db.select({ id: versions.id })
               .from(versions)
-              .where(lte(versions.generationId, roundData.gen));
+              .where(eq(versions.generationId, roundData.gen));
             const validVersionIds = validVersions.map(v => v.id);
             
             // Get the CORRECT Pokemon + its pre-evolutions
@@ -391,10 +391,10 @@ export async function registerRoutes(
           console.log(`[Answer] Found puzzle moves in DB:`, puzzleMoves);
           const puzzleMoveIds = puzzleMoves.map(m => m.id);
           
-          // Get valid versions for the generation
+          // Get valid versions for the EXACT generation (not cumulative)
           const validVersions = await db.select({ id: versions.id })
             .from(versions)
-            .where(lte(versions.generationId, roundData.gen));
+            .where(eq(versions.generationId, roundData.gen));
           const validVersionIds = validVersions.map(v => v.id);
           
           console.log(`[Answer] Valid version IDs for gen ${roundData.gen}:`, validVersionIds.length);
@@ -454,10 +454,10 @@ export async function registerRoutes(
           
           const puzzleMoveIds = puzzleMoves.map(m => m.id);
           
-          // Get valid versions for the generation
+          // Get valid versions for the EXACT generation (not cumulative)
           const validVersions = await db.select({ id: versions.id })
             .from(versions)
-            .where(lte(versions.generationId, roundData.gen));
+            .where(eq(versions.generationId, roundData.gen));
           const validVersionIds = validVersions.map(v => v.id);
           
           // Get the guessed Pokemon + its pre-evolutions
@@ -628,10 +628,10 @@ export async function registerRoutes(
         const directLearnerIds = directLearners.map(p => p.pokemonId);
         console.log(`[Pokedex] Found ${directLearnerIds.length} Pokemon that directly learn all moves`);
 
-        // Get valid version IDs for checking pre-evolutions
+        // Get valid version IDs for checking pre-evolutions (EXACT generation only)
         const validVersions = await db.select({ id: versions.id })
           .from(versions)
-          .where(maxGen ? lte(versions.generationId, maxGen) : undefined);
+          .where(maxGen ? eq(versions.generationId, maxGen) : undefined);
         const validVersionIds = validVersions.map(v => v.id);
 
         // Find Pokemon that can learn all moves through pre-evolutions
@@ -929,10 +929,10 @@ export async function registerRoutes(
       
       console.log(`Checking uniqueness for moves:`, moveIds);
       
-      // Get valid versions for this generation
+      // Get valid versions for this EXACT generation (not cumulative)
       const validVersions = await db.select({ id: versions.id })
         .from(versions)
-        .where(lte(versions.generationId, gen));
+        .where(eq(versions.generationId, gen));
       const validVersionIds = validVersions.map(v => v.id);
       
       // Get the target Pokemon's species
@@ -1011,10 +1011,10 @@ export async function registerRoutes(
         });
       }
       
-      // Get valid versions for this generation
+      // Get valid versions for this EXACT generation (not cumulative)
       const validVersions = await db.select({ id: versions.id })
         .from(versions)
-        .where(lte(versions.generationId, gen));
+        .where(eq(versions.generationId, gen));
       const validVersionIds = validVersions.map(v => v.id);
       
       // Find Pokemon that can DIRECTLY learn ALL these moves

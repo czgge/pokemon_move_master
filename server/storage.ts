@@ -67,6 +67,23 @@ async function getValidVersionIds(maxGen: number): Promise<number[]> {
   return ids;
 }
 
+// Cache for version IDs of a specific generation only
+const exactGenVersionCache = new Map<number, number[]>();
+
+async function getExactGenVersionIds(gen: number): Promise<number[]> {
+  if (exactGenVersionCache.has(gen)) {
+    return exactGenVersionCache.get(gen)!;
+  }
+  
+  const genVersions = await db.select({ id: versions.id })
+    .from(versions)
+    .where(eq(versions.generationId, gen));
+  
+  const ids = genVersions.map(v => v.id);
+  exactGenVersionCache.set(gen, ids);
+  return ids;
+}
+
 class DatabaseStorage implements IStorage {
   async getHighScores(genFilter?: number): Promise<HighScore[]> {
     if (genFilter) {
@@ -331,14 +348,17 @@ class DatabaseStorage implements IStorage {
   }
 
   async getMovesForPokemon(pokemonId: number, maxGen: number): Promise<Move[]> {
-    const validVersionIds = await getValidVersionIds(maxGen);
-    if (validVersionIds.length === 0) return [];
+    // Get version IDs for the EXACT generation (not all generations up to maxGen)
+    const exactGenVersionIds = await getExactGenVersionIds(maxGen);
+    if (exactGenVersionIds.length === 0) return [];
 
     // Get this Pokemon + its pre-evolutions
     const pokemonWithPreEvos = await this.getPokemonWithPreEvolutions(pokemonId);
     console.log(`[getMovesForPokemon] Pokemon ${pokemonId} with pre-evolutions:`, pokemonWithPreEvos);
 
     // Get moves for this Pokemon AND its pre-evolutions
+    // IMPORTANT: Only consider moves available in the EXACT generation (maxGen)
+    // This ensures that moves removed in later generations are not included
     const result = await db.selectDistinct({
         moveId: moves.id,
         moveName: moves.name,
@@ -352,10 +372,10 @@ class DatabaseStorage implements IStorage {
       .innerJoin(moves, eq(moves.id, pokemonMoves.moveId))
       .where(and(
         inArray(pokemonMoves.pokemonId, pokemonWithPreEvos),
-        inArray(pokemonMoves.versionGroupId, validVersionIds)
+        inArray(pokemonMoves.versionGroupId, exactGenVersionIds)
       ));
     
-    console.log(`[getMovesForPokemon] Found ${result.length} moves for Pokemon ${pokemonId}`);
+    console.log(`[getMovesForPokemon] Found ${result.length} moves for Pokemon ${pokemonId} in Gen ${maxGen}`);
     
     // Map to Move objects
     return result.map(row => ({
@@ -372,8 +392,9 @@ class DatabaseStorage implements IStorage {
   async checkUniqueMoveset(moveIds: number[], pokemonId: number, maxGen: number): Promise<boolean> {
     if (moveIds.length === 0) return false;
 
-    const validVersionIds = await getValidVersionIds(maxGen);
-    if (validVersionIds.length === 0) return true;
+    // Use exact generation version IDs to match the same logic as getMovesForPokemon
+    const exactGenVersionIds = await getExactGenVersionIds(maxGen);
+    if (exactGenVersionIds.length === 0) return true;
 
     // Get target Pokemon info
     const [targetPokemon] = await db.select({
@@ -389,6 +410,7 @@ class DatabaseStorage implements IStorage {
     
     // FAST APPROACH: Only check for direct learners
     // This is much faster and still catches most duplicates
+    // IMPORTANT: Use exactGenVersionIds to only check moves available in the exact generation
     const directLearners = await db.select({ 
         pokemonId: pokemonMoves.pokemonId
       })
@@ -396,7 +418,7 @@ class DatabaseStorage implements IStorage {
       .innerJoin(pokemon, eq(pokemonMoves.pokemonId, pokemon.id))
       .where(and(
         inArray(pokemonMoves.moveId, moveIds),
-        inArray(pokemonMoves.versionGroupId, validVersionIds),
+        inArray(pokemonMoves.versionGroupId, exactGenVersionIds),
         lte(pokemon.generationId, maxGen),
         sql`${pokemon.speciesName} NOT LIKE ${targetSpeciesBase + '%'}` // Exclude same species
       ))
