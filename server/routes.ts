@@ -1624,7 +1624,7 @@ export async function registerRoutes(
       
       res.json({ 
         success: true, 
-        message: `Generazione COMPLETA + MEW avviata per Gen ${gens.join(', ')}! Controlla i log del server per il progresso. Tempo stimato: ~${(gens.length * 2.5).toFixed(1)} ore.` 
+        message: `Generazione COMPLETA (incluso Mew) avviata per Gen ${gens.join(', ')}! Controlla i log del server per il progresso. Tempo stimato: ~${(gens.length * 2.5).toFixed(1)} ore.` 
       });
       
       // Run unified generation script in background for each generation
@@ -1661,7 +1661,7 @@ export async function registerRoutes(
           });
         }
         
-        console.log("\n🎉 ALL COMPLETE + MEW GENERATIONS COMPLETE!");
+        console.log("\n🎉 ALL COMPLETE (INCLUDING MEW) GENERATIONS COMPLETE!");
       })().catch(error => {
         console.error("Error in Complete+Mew generation loop:", error);
       });
@@ -1670,7 +1670,7 @@ export async function registerRoutes(
       console.error("Error starting Complete+Mew generation:", error);
       res.status(500).json({ 
         success: false, 
-        message: "Errore nell'avvio della generazione Completa+Mew", 
+        message: "Errore nell'avvio della generazione Completa (incluso Mew)", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }
