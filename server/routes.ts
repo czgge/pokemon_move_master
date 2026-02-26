@@ -1607,6 +1607,75 @@ export async function registerRoutes(
     }
   });
 
+  // ADMIN ENDPOINT - Generate Complete + Mew puzzles (unified script)
+  app.post("/api/admin/generate-complete-and-mew", async (req, res) => {
+    try {
+      const { generations } = req.body;
+      const gens = Array.isArray(generations) && generations.length > 0 ? generations : null;
+      
+      if (!gens) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Seleziona almeno una generazione" 
+        });
+      }
+      
+      console.log(`Starting Complete + Mew puzzle generation for generations: ${gens.join(', ')}`);
+      
+      res.json({ 
+        success: true, 
+        message: `Generazione COMPLETA + MEW avviata per Gen ${gens.join(', ')}! Controlla i log del server per il progresso. Tempo stimato: ~${(gens.length * 2.5).toFixed(1)} ore.` 
+      });
+      
+      // Run unified generation script in background for each generation
+      const { spawn } = await import('child_process');
+      const scriptPath = path.join(process.cwd(), 'scripts', 'generate-complete-and-mew.ts');
+      
+      (async () => {
+        for (const gen of gens) {
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`STARTING COMPLETE + MEW GENERATION - GEN ${gen}`);
+          console.log(`${'='.repeat(60)}\n`);
+          
+          await new Promise<void>((resolve, reject) => {
+            const child = spawn('npx', ['tsx', scriptPath, gen.toString()], {
+              cwd: process.cwd(),
+              stdio: 'inherit',
+              shell: true
+            });
+            
+            child.on('error', (error) => {
+              console.error(`Error running Complete+Mew generation for Gen ${gen}:`, error);
+              reject(error);
+            });
+            
+            child.on('exit', (code) => {
+              if (code === 0) {
+                console.log(`✅ Complete+Mew Gen ${gen} completed successfully`);
+                resolve();
+              } else {
+                console.error(`❌ Complete+Mew Gen ${gen} failed with code ${code}`);
+                reject(new Error(`Complete+Mew Gen ${gen} failed`));
+              }
+            });
+          });
+        }
+        
+        console.log("\n🎉 ALL COMPLETE + MEW GENERATIONS COMPLETE!");
+      })().catch(error => {
+        console.error("Error in Complete+Mew generation loop:", error);
+      });
+      
+    } catch (error) {
+      console.error("Error starting Complete+Mew generation:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Errore nell'avvio della generazione Completa+Mew", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   // ADMIN ENDPOINT - Download puzzle file
   app.get("/api/admin/download-puzzle/:gen", async (req, res) => {
     try {
