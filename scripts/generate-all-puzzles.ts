@@ -4,12 +4,12 @@ import { lte, and, inArray, eq, isNotNull } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
-// Get valid version IDs for a generation
-async function getValidVersionIds(maxGen: number): Promise<number[]> {
+// Get valid version IDs for a specific generation (not cumulative)
+async function getValidVersionIds(targetGen: number): Promise<number[]> {
   const versionsList = await db.select({ id: versions.id })
     .from(versions)
     .where(and(
-      lte(versions.generationId, maxGen),
+      eq(versions.generationId, targetGen), // Only exact generation, not cumulative
       isNotNull(versions.generationId)
     ));
   return versionsList.map(v => v.id);
@@ -53,8 +53,8 @@ async function getPokemonWithPreEvolutions(pokemonId: number): Promise<number[]>
 }
 
 // Get all moves a Pokemon can learn
-async function getMovesForPokemon(pokemonId: number, maxGen: number): Promise<number[]> {
-  const validVersionIds = await getValidVersionIds(maxGen);
+async function getMovesForPokemon(pokemonId: number, targetGen: number): Promise<number[]> {
+  const validVersionIds = await getValidVersionIds(targetGen);
   const pokemonWithPreEvos = await getPokemonWithPreEvolutions(pokemonId);
   
   const pokemonMovesList = await db.select({ moveId: pokemonMoves.moveId })
